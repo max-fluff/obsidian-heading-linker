@@ -1,138 +1,182 @@
 # Heading Linker
 
-An Obsidian plugin that finds words in your notes and turns them into links to
-matching **headings** inside files you nominate as glossaries.
+Finds words in your notes and turns them into links to matching **headings** inside files you nominate as glossaries — in any word form (declensions, plurals), not just exact spellings. Keep a `Guide.md` with a `## Projectile` heading, and every "projectile", "projectiles" or other form elsewhere gets highlighted and can become `[[Guide#Projectile|projectiles]]`: a real link that opens the file at that heading, with the note's own wording kept as the visible text.
 
-If you keep a note called `Guide.md` with a `## Projectile` heading, then every
-time the word "projectile" (or "projectiles", or another inflected form) shows up
-elsewhere, Heading Linker highlights it and can turn it into
-`[[Guide#Projectile|projectiles]]` — a real link that opens the file at that
-heading, with the note's own wording kept as the visible text.
+It's the file-based sibling of [Glossary Linker](https://community.obsidian.md/plugins/glossary-linker) — that one treats each note as a term, this one treats each heading inside a chosen file as a term, on the same matching engine.
 
-**Best for:** vaults in inflected languages (Russian, Ukrainian, German, and
-others), where matching has to follow word forms — and anyone who wants the option
-of real `[[wikilinks]]`, not just a live overlay.
+> **Beta.** Not in the community catalog yet — install via [BRAT](#installation) for now.
 
-It's the file-based sibling of [Glossary Linker](https://github.com/max-fluff/obsidian-glossary-linker).
-Glossary Linker treats each note as one term; Heading Linker treats each heading
-inside a chosen file as a term. Same matching engine, different source.
+The plugin ships as `main.js`, `manifest.json` and `styles.css`. Six language modules are baked into `main.js`, so morphology works the moment you install it. `main.js` is built from `src/` with esbuild (see [Development](#development)).
 
-## How it differs from virtual-link plugins
+## Contents
 
-Plugins like Virtual Linker and FakeLink also auto-link text to notes and headings.
-Two things set Heading Linker apart:
-
-- **Word forms.** It matches inflected forms through a stemmer — "spawns",
-  "spawning" and "spawn" all find a `Spawn` heading; Russian "рой", "роя", "рои"
-  all find `Рой`. Six languages are built in. Plugins that match literal text miss
-  these.
-- **Real links, on demand.** The highlight is a live overlay that changes nothing on
-  disk, but you can also *materialize* — turn matches into actual `[[wikilinks]]`,
-  in bulk, with a preview — and unlink them again. Those links count in the graph
-  and backlinks.
-
-Like them, it supports per-heading **aliases** — but through an inline comment, since
-a heading has no frontmatter of its own (see "Aliases" below).
-
-## How it works
-
-- **You pick the glossary files.** In settings, list the notes whose headings
-  should become terms. Nothing else is scanned for headings.
-- **Every heading is a term.** Its text is what you see; the link points at
-  `File#Heading`.
-- **Word forms are matched, not just exact text.** A stemmer reduces inflected
-  forms so "spawns", "spawning" and "spawn" all find a `Spawn` heading. English,
-  Russian, Ukrainian, German, Spanish and French are built in; you choose which
-  are active and in what priority.
-- **The same heading text in two files is two terms.** When a word could point at
-  either, the highlight is marked ambiguous and asks which one you meant — when
-  reading, when clicking, and in the "turn into links" preview.
+- [What it does](#what-it-does)
+  - [Highlight headings in any word form](#highlight-headings-in-any-word-form)
+  - [Turn headings into real links](#turn-headings-into-real-links)
+  - [Unlink](#unlink)
+  - [Aliases](#aliases)
+  - [Suggest links as you type](#suggest-links-as-you-type-optional)
+  - [Ambiguous headings](#ambiguous-headings)
+- [Sources and scope](#sources-and-scope)
+- [Morphology and languages](#morphology-and-languages)
+- [Commands](#commands-command-palette-ctrlp)
+- [Settings](#settings)
+- [Skipped contexts](#skipped-contexts)
+- [Performance](#performance)
+- [Licenses & credits](#licenses--credits)
+- [Development](#development)
+- [Installation](#installation)
+- [Compatibility](#compatibility)
+- [Related plugins](#related-plugins)
 
 ## What it does
 
-- Highlights matched words in Reading view and in the editor (live, on save, or
-  off).
-- **Turn into links** — for the current note, a selection, or every note in
-  scope. Always shows a preview first; nothing is written until you apply.
-- **Unlink** — the reverse, for the current note, a selection, or all notes.
-- Native hover-preview and click on the links it makes — they are ordinary
-  wikilinks, so Obsidian handles them.
-- A right-click menu on a highlighted word (link it, open it, exclude it) and on
-  a heading link (unlink it).
-- A status-bar count of how many headings the current note mentions.
+### Highlight headings in any word form
 
-## Sources and scope
+Words that match a heading are underlined in Reading view and in the editor (Live Preview / Source). Matching follows word forms through a stemmer, so "spawns", "spawning" and "spawn" all find a `Spawn` heading, and Russian "рой", "роя", "рои" all find `Рой` — not just the exact spelling. Editor highlighting can run live, on save, or off.
 
-Two separate questions, two separate settings:
+Compared with virtual-link plugins such as Virtual Linker and FakeLink, the two differences are that Heading Linker matches inflected forms (they match literal text) and that it can turn matches into real links, not only show an overlay.
 
-- **Sources** — where headings come from: the whole vault, or chosen files and
-  folders. An ignore list drops files or folders you never want as a source.
-- **Scope** — where links get made: the whole vault, or chosen folders, with an
-  always-excluded list.
+### Turn headings into real links
 
-Both are editable from the settings tab, the file explorer's right-click menu, and
-the command palette (for the active note).
+The highlight is a live overlay that changes nothing on disk — but you can *materialize* it: turn matches into actual `[[File#Heading|word]]` wikilinks, for the current note, a selection, or every note in scope. A preview lists every replacement first; nothing is written until you apply, and a note edited since the preview is skipped. Materialized links are ordinary wikilinks, so they get native hover-preview and click, and count in the graph and backlinks.
 
-## Exclusions
+### Unlink
 
-- **Heading levels** — choose which levels (H1–H6) become terms.
-- **Excluded headings** — drop a specific heading from the index; its word forms
-  stop linking too.
-- **Per note** — add `heading-linker: false` to a note's frontmatter to turn off
-  linking in that note, without touching folder settings.
+The reverse of materialize: replace heading links with their plain text again, for the current note, a selection, or all notes — also with a preview. Right-clicking a single heading link offers **Unlink this link**.
 
-## Aliases
+### Aliases
 
-A heading can carry extra wordings — abbreviations or synonyms the stemmer won't
-reach — in an Obsidian comment right under it:
+A heading can carry extra wordings — abbreviations or synonyms the stemmer won't reach — in an Obsidian comment right under it:
 
 ```markdown
 ## Central nervous system
 %% alias: CNS, brain and spinal cord %%
 ```
 
-Now "CNS" and "brain and spinal cord" also link to that heading. Comments are
-invisible in Reading view, so the note stays clean. Use `alias:` or `aliases:`,
-comma-separated. Reading them costs nothing on a normal rebuild (they're cached and
-only re-read when the file changes); if you run whole-vault sourcing and don't use
-aliases, the **Heading aliases** setting turns the file reads off entirely.
+Now "CNS" and "brain and spinal cord" link to that heading too, in any word form, and appear in the autocomplete. Comments are invisible in Reading view, so the note stays clean; use `alias:` or `aliases:`, comma-separated. Reading them is cheap — see [Performance](#performance) — and the **Heading aliases** setting turns it off entirely if you don't use them.
 
-## Settings worth knowing
+### Suggest links as you type (optional)
 
-- **Match mode** — stemmer (best across forms), a lighter ending strip, or exact.
-- **Smart case** — mostly-uppercase headings (like `IT` or `NASA`) match
-  case-sensitively, so an acronym doesn't link every ordinary word.
-- **Minimum heading length** — keeps very short headings from matching everywhere.
-- **Link first occurrence only** — link just the first mention of each heading per
-  note instead of all of them.
-- **Skip headings** — don't link words that sit inside a note's own headings.
+With **Suggest links while typing** on, typing a word that is (a form of) a heading or an alias offers to complete it into a link. Off by default.
 
-## Install (beta via BRAT)
+### Ambiguous headings
 
-1. Install the **BRAT** community plugin.
-2. Add this repository (`max-fluff/obsidian-heading-linker`) as a beta plugin.
-3. Enable **Heading Linker** in Community plugins.
+The same heading text in two different files is two different terms. When a word could point at either, the highlight is marked as ambiguous and asks which one you meant — on click, and in the materialize preview (one choice per word, applied everywhere).
 
-## Build from source
+## Sources and scope
 
+Two separate questions, two separate settings:
+
+- **Sources** — where headings are collected from: the whole vault, or chosen files and folders. An **Ignored sources** list drops files or folders that should never contribute headings, even in whole-vault mode.
+- **Scope** — where links are made: the whole vault, or chosen folders, with an **Always excluded** list. A single note can also opt out with a `heading-linker: false` frontmatter property.
+
+Both lists are editable from the settings tab, the file explorer's right-click menu, and the command palette (acting on the active note).
+
+## Morphology and languages
+
+Matching reduces each word to a stem so different forms of the same word collapse together. Six languages are built in — English, Russian, Ukrainian, German, Spanish and French — and you choose which are active and in what priority order. On first run the plugin enables English plus your Obsidian interface language, if a module exists for it.
+
+Enable only the languages your vault actually uses: since same-script languages combine, leaving German on in an English-only vault can occasionally over-stem a word. The **Match mode** setting also offers a lighter ending-strip or an exact (case-insensitive) mode instead of the full stemmer.
+
+## Commands (command palette, Ctrl+P)
+
+| Command | What it does |
+| --- | --- |
+| **Link headings: this note / selection / all notes** | Turn matches into links, with a preview. |
+| **Unlink headings: this note / selection / all notes** | Revert heading links to plain text, with a preview. |
+| **Rebuild heading index** | Re-scan the glossary files for headings and aliases. |
+
+Plus per-note toggles that mirror the explorer menu, each shown only when it applies: **Add / Remove this note … heading sources**, **Ignore / Stop ignoring this note as a heading source**, **Never link in this note / Stop always-excluding**, **Include this note in scope / Remove from scope**.
+
+## Settings
+
+- **Sources** — collect headings from the whole vault or chosen files/folders; ignored sources; which heading levels (H1–H6) become terms; whether to read alias comments.
+- **Scope** — link across the whole vault or chosen folders; always-excluded folders.
+- **Matching** — match mode (stemmer / ending-strip / exact); minimum heading length; smart case for acronyms; active languages and their priority; link only the first occurrence per note; excluded headings.
+- **Highlighting** — Reading-view highlight on/off; editor highlight live / on save / off; skip a note's own headings; status-bar count (optionally counting existing links).
+- **Autocomplete** — suggest links while typing; minimum typed length; characters after which to stay silent.
+- **Context menu** — toggle each group of right-click items (link, open, exclude, unlink).
+- **Maintenance** — rebuild the index on demand.
+
+The highlight color and underline styles are exposed through **[Style Settings](https://github.com/mgmeyers/obsidian-style-settings)** if you have it.
+
+## Skipped contexts
+
+Words are never linked (and suggestions never fire) inside code blocks (` ``` ` and `~~~`), inline code, frontmatter, `%%` comments, existing `[[...]]` and `[..](..)` links, or URLs; a note's own headings are skipped too unless you turn that off. When a link is written into a Markdown table cell, the alias pipe is escaped so the row isn't broken. Headings that contain `|`, `#`, `[`, `]` or `^` are not indexed, because those characters can't sit inside a `[[File#Heading]]` target.
+
+## Performance
+
+Rebuilding the index never reads file bodies — it works from Obsidian's metadata cache. Alias comments are the one thing that needs the body; they are read once per file, cached, and re-read only when that file changes, so a rebuild triggered by a settings change costs nothing extra. In whole-vault sourcing you can turn alias reading off completely. The per-keystroke check that suppresses suggestions in code, links and comments tests only the cursor position, not the whole document.
+
+## Licenses & credits
+
+Most bundled language modules port well-known, permissively-licensed stemming algorithms (`uk.js` is the plugin's own, under its MIT license). All are free for commercial and non-commercial use; the only obligation is keeping the attribution notices, which are already in each file's header.
+
+| Module | Algorithm | License | Reference |
+|---|---|---|---|
+| `ru.js` | Snowball Russian stemmer (Porter framework) | BSD (© 2001–2006 M. Porter & R. Boulton) | [snowballstem.org](https://snowballstem.org/algorithms/russian/stemmer.html) · [license](https://snowballstem.org/license.html) |
+| `uk.js` | Light suffix stemmer with vowel alternation | MIT (this plugin) | — |
+| `en.js` | Porter stemmer (M. F. Porter, 1980) | Free use, released by the author | [tartarus.org](https://tartarus.org/martin/PorterStemmer/) |
+| `es.js` | Apache Lucene `SpanishLightStemmer` (UniNE, J. Savoy) | Apache License 2.0 | [source](https://github.com/apache/lucene/blob/main/lucene/analysis/common/src/java/org/apache/lucene/analysis/es/SpanishLightStemmer.java) |
+| `de.js` | Apache Lucene `GermanLightStemmer` (UniNE, J. Savoy) | Apache License 2.0 | [source](https://github.com/apache/lucene/blob/main/lucene/analysis/common/src/java/org/apache/lucene/analysis/de/GermanLightStemmer.java) |
+| `fr.js` | Apache Lucene `FrenchLightStemmer` (UniNE, J. Savoy) | Apache License 2.0 | [source](https://github.com/apache/lucene/blob/main/lucene/analysis/common/src/java/org/apache/lucene/analysis/fr/FrenchLightStemmer.java) |
+
+The es/de/fr stemmers were translated to JavaScript and adapted to this plugin's module interface; per the Apache License the source files note that they are modified ports. Apache 2.0 full text: <https://www.apache.org/licenses/LICENSE-2.0>. Heading Linker itself is released under the MIT license — see [`LICENSE`](LICENSE).
+
+## Development
+
+The core is written as small CommonJS modules in `src/` and bundled into `main.js` by esbuild. The language modules in `languages/` are bundled in through `src/builtin-languages.js`; adding a language means contributing a module there and rebuilding (see [`languages/README.md`](languages/README.md)). Nothing is loaded or executed at runtime.
+
+Generic code shared with the sibling Glossary Linker and Code Linker plugins lives in `src/shared/`, a git submodule of [obsidian-linker-shared](https://github.com/max-fluff/obsidian-linker-shared). Clone with `--recurse-submodules` so the build can find it:
+
+```sh
+git clone --recurse-submodules https://github.com/max-fluff/obsidian-heading-linker
+npm install      # once, installs esbuild
+npm run build    # bundle src/ -> main.js
 ```
-npm install
-npm run build
-```
 
-The bundle (`main.js`) is built from `src/` by esbuild. The shared helpers in
-`src/shared/` are a git submodule — clone with `--recursive` or run
-`git submodule update --init`.
+In an existing clone without the submodule, run `git submodule update --init` first.
 
-## Not yet
+`src/` layout:
 
-- **Per-word case-sensitivity modes.** Matching is case-insensitive, except that
-  smart case makes acronym headings case-sensitive automatically.
+- `main.js` — the `Plugin` class: lifecycle, commands, menus, scope and sources, link writing, alias parsing, small helpers; applies the mixins below.
+- `constants.js` — default settings.
+- `builtin-languages.js` — requires the modules in `languages/` so they are bundled into `main.js`.
+- `language-api.js` — the language-module contract and `validateLanguage()`.
+- `matcher.js` — the heading index and matching engine (`keysFor`, `tokenizeForm`, `rebuildIndex`, `findMatches`, protected ranges).
+- `highlight.js` — Reading-view DOM highlighting and the CM6 editor extension.
+- `materialize.js` — turning matches into links and reverting them, plus the link context menu.
+- `modals.js` — the materialize/unlink preview dialogs and the choose-heading dialog.
+- `settings-tab.js` — the settings UI.
+- `folder-suggest.js` — path autocomplete for the source/scope lists (feature-detected).
+- `heading-suggest.js` — the editor autocomplete (`EditorSuggest`, feature-detected).
+- `shared/` — git submodule shared with the sibling plugins: markdown helpers, the i18n engine, and the folder-list settings editor.
+- `locales/` — interface strings (English and Russian), fed to the shared i18n engine.
 
-Headings that contain `|`, `#`, `[`, `]` or `^` are skipped: those characters can't
-sit inside a `[[File#Heading]]` target.
+`main.js` is generated; edit `src/` (or `languages/`) and rebuild rather than editing it directly. `node_modules/`, `package-lock.json` and `esbuild.local.mjs` are git-ignored.
 
-## License
+## Installation
 
-MIT. Bundled stemmers keep their own licenses — see
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+**Beta builds via [BRAT](https://github.com/TfTHacker/obsidian42-brat) (for now).** Install the BRAT community plugin, add the repository `max-fluff/obsidian-heading-linker`, then enable **Heading Linker** in *Settings → Community plugins*.
+
+**Manually.** Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/max-fluff/obsidian-heading-linker/releases/latest) into `<vault>/.obsidian/plugins/heading-linker/`, then enable the plugin in *Settings → Community plugins*.
+
+Once installed, set your glossary files (or switch to whole-vault sourcing) under *Settings → Heading Linker → Heading sources*. A community-catalog listing is planned.
+
+## Compatibility
+
+Requires Obsidian 1.4.0 or newer, and works on both desktop and mobile — it reads headings from Obsidian's metadata cache, not the filesystem. Interface in English and Russian, following Obsidian's language.
+
+Nothing below is required, but the plugin cooperates with them if you have them:
+
+- **[Style Settings](https://github.com/mgmeyers/obsidian-style-settings)** — a UI for the highlight color and underline styles, including the ambiguous-heading underline.
+- **Page Preview** (core plugin) — provides the hover preview on heading links; the plugin registers as its own *Heading Linker* source you can toggle independently.
+
+## Related plugins
+
+Also by the author:
+
+**[Glossary Linker](https://community.obsidian.md/plugins/glossary-linker)** — highlights glossary terms in any word form, turns them into real links, and learns new aliases from links you've already made. Works on desktop and mobile.
+
+**[Code Linker](https://community.obsidian.md/plugins/code-linker)** — autocompletes references to your source code and inserts a deep-link that opens the file at the exact line in your editor (VS Code, JetBrains, …). Desktop-only.
