@@ -1,0 +1,4 @@
+node_modules/
+test-vault/
+esbuild.local.mjs
+.idea/

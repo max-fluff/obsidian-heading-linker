@@ -1,0 +1,222 @@
+/* @settings
+
+name: Heading Linker
+id: heading-linker
+settings:
+  -
+    id: heading-link-color
+    title: Highlight color
+    description: Color of heading-term highlights. Leave at default to follow the theme's link color.
+    type: variable-themed-color
+    format: hex
+    opacity: false
+    default-light: '#705dcf'
+    default-dark: '#a68cff'
+  -
+    id: heading-underline-style
+    title: Underline style
+    type: variable-select
+    default: dotted
+    options:
+      - dotted
+      - solid
+      - dashed
+      - double
+      - none
+  -
+    id: heading-ambiguous-underline-style
+    title: Ambiguous-term underline style
+    description: Underline for words that match more than one heading.
+    type: variable-select
+    default: double
+    options:
+      - double
+      - dotted
+      - dashed
+      - solid
+
+*/
+
+.heading-link,
+.cm-heading-link {
+  color: var(--heading-link-color, var(--link-color));
+  text-decoration: none;
+  border-bottom: 1px var(--heading-underline-style, dotted) var(--heading-link-color, var(--link-color));
+  cursor: pointer;
+}
+
+.heading-link:hover,
+.cm-heading-link:hover {
+  color: var(--link-color-hover);
+  border-bottom-style: solid;
+}
+
+.heading-ambiguous,
+.cm-heading-ambiguous {
+  border-bottom-width: 3px;
+  border-bottom-style: var(--heading-ambiguous-underline-style, double);
+}
+
+.heading-ambiguous:hover,
+.cm-heading-ambiguous:hover {
+  border-bottom-width: 3px;
+  border-bottom-style: var(--heading-ambiguous-underline-style, double);
+}
+
+/* Heading-level (H1..H6) checkbox row in settings */
+.heading-level-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 10px;
+  cursor: pointer;
+}
+
+/* Autocomplete suggestion rows */
+.heading-suggestion {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.heading-suggestion-note {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  margin-left: auto;
+}
+
+/* Per-word collision resolver in the "turn into links" preview */
+.heading-term-select {
+  max-width: 16em;
+}
+
+.heading-ambiguous-row td {
+  vertical-align: middle;
+}
+
+.heading-resolve-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+}
+
+.heading-resolve-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.heading-resolve-word {
+  font-weight: var(--font-semibold);
+  min-width: 8em;
+}
+
+/* Choose-a-term (collision resolution) dialog */
+.heading-choose-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.heading-choose-item {
+  text-align: left;
+  width: 100%;
+}
+
+.heading-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-ui-small);
+}
+
+.heading-preview-table td,
+.heading-preview-table th {
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.heading-preview-file {
+  font-weight: var(--font-semibold);
+  margin: 10px 0 4px;
+}
+
+.heading-preview-empty {
+  color: var(--text-muted);
+  padding: 12px 0;
+}
+
+.heading-preview-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.heading-section-desc {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  margin: 4px 0 14px;
+}
+
+/* Language rows share the folder-row indent below, so both nested lists in the
+   pane line up. */
+.heading-lang-row.setting-item {
+  border-top: none;
+  margin-left: 1.5em;
+  padding: 6px 6px 6px 0.75em;
+  border-left: 2px solid var(--background-modifier-border);
+}
+
+.heading-lang-error {
+  color: var(--text-error);
+}
+
+.setting-item.mod-warning .extra-setting-button {
+  color: var(--text-error);
+  opacity: 1;
+}
+
+/* Folder-set editor. Each chosen path is a compact indented row (matching the
+   language-row treatment so the pane reads as one list style); a full-width input
+   with autocomplete and an add button sits below the list. */
+.heading-folder-rows:not(:empty) {
+  margin: 6px 0;
+}
+.heading-folder-row.setting-item {
+  border-top: none;
+  padding: 4px 6px 4px 0.75em;
+  margin-left: 1.5em;
+  border-left: 2px solid var(--background-modifier-border);
+}
+.heading-folder-row .setting-item-name {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  overflow-wrap: anywhere;
+}
+.heading-folder-add {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0 18px 1.5em;
+}
+.heading-folder-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.heading-folder-addbtn {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.heading-folder-addbtn svg {
+  width: 16px;
+  height: 16px;
+}

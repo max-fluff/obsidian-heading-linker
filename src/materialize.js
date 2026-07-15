@@ -1,0 +1,284 @@
+'use strict';
+
+const { Menu, Notice } = require('obsidian');
+const { splitLines } = require('./shared/markdown');
+const { MaterializePreviewModal, UnlinkPreviewModal, ChooseTermModal } = require('./modals');
+const { t, plural } = require('./shared/i18n');
+
+// Turning words into heading links and reverting them. Mixed into the plugin prototype.
+module.exports = {
+  collectMatches(text, currentFile) {
+    const matches = this.findMatches(text, currentFile, { protect: true });
+    if (!this.settings.linkFirstOnly) return matches;
+    const seen = new Set();
+    const out = [];
+    for (const m of matches) {
+      if (seen.has(m.linktext)) continue;
+      seen.add(m.linktext);
+      out.push(m);
+    }
+    return out;
+  },
+
+  openMaterializePreview(files, onApply) {
+    new MaterializePreviewModal(this.app, files, this, onApply).open();
+  },
+
+  // Write each result, skipping notes edited since the preview was built.
+  async writeScopeResults(results) {
+    let total = 0;
+    let skipped = 0;
+    for (const r of results) {
+      let written = false;
+      await this.app.vault.process(r.file, (data) => {
+        if (data !== r.original) return data;
+        written = true;
+        return r.newText;
+      });
+      if (written) total += r.count;
+      else skipped++;
+    }
+    let msg = t('notice.scopeWritten', { files: plural('file', results.length - skipped), links: plural('link', total) });
+    if (skipped) msg += t('notice.scopeSkipped', { n: skipped });
+    new Notice(msg);
+    this.updateStatusBar();
+  },
+
+  async materializeCurrent() {
+    const file = this.app.workspace.getActiveFile();
+    if (!file) { new Notice(t('notice.noActiveNote')); return; }
+    const text = await this.app.vault.cachedRead(file);
+    const matches = this.collectMatches(text, this.currentFileBase(file.path));
+    if (!matches.length) { new Notice(t('notice.noMatches')); return; }
+    this.openMaterializePreview([{ file, original: text, matches }], async (results) => {
+      const r = results[0];
+      let written = false;
+      await this.app.vault.process(r.file, (data) => {
+        if (data !== r.original) return data;
+        written = true;
+        return r.newText;
+      });
+      if (!written) { new Notice(t('notice.noteChanged')); return; }
+      new Notice(t('notice.linksCreated', { links: plural('link', r.count) }));
+      this.updateStatusBar();
+    });
+  },
+
+  materializeSelection(editor) {
+    const sel = editor.getSelection();
+    if (!sel) { new Notice(t('notice.noSelection')); return; }
+    const file = this.app.workspace.getActiveFile();
+    const matches = this.collectMatches(sel, file ? this.currentFileBase(file.path) : null);
+    if (!matches.length) { new Notice(t('notice.noMatches')); return; }
+    this.openMaterializePreview([{ file: null, original: sel, matches, label: t('label.selection') }], (results) => {
+      editor.replaceSelection(results[0].newText);
+      new Notice(t('notice.linksCreated', { links: plural('link', results[0].count) }));
+    });
+  },
+
+  async scanScopeMatches(compute) {
+    const files = this.getScopeFiles();
+    const out = [];
+    const notice = new Notice(t('notice.scanning'), 0);
+    try {
+      for (let i = 0; i < files.length; i++) {
+        if (i % 25 === 0) notice.setMessage(t('notice.scanningProgress', { current: i + 1, total: files.length }));
+        const file = files[i];
+        const text = await this.app.vault.cachedRead(file);
+        const matches = compute(text, file);
+        if (matches.length) out.push({ file, original: text, matches });
+      }
+    } finally {
+      notice.hide();
+    }
+    return out;
+  },
+
+  async materializeScope() {
+    const files = await this.scanScopeMatches((text, file) =>
+      this.collectMatches(text, this.currentFileBase(file.path)));
+    if (!files.length) { new Notice(t('notice.noMatches')); return; }
+    this.openMaterializePreview(files, (results) => this.writeScopeResults(results));
+  },
+
+  // Heading links in `text` that unlink can revert: each resolves to a glossary file and
+  // carries a #heading subpath (the links this plugin creates). Offsets are into `text`.
+  findHeadingLinks(text, sourcePath) {
+    const ranges = this.codeFrontmatterRanges(text);
+    const re = /\[\[([^\]\n]+)\]\]/g;
+    const out = [];
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const start = m.index;
+      const end = m.index + m[0].length;
+      if (this.overlapsProtected(ranges, start, end)) continue;
+      const parsed = this.parseHeadingInner(m[1]);
+      if (!parsed) continue; // heading links carry a #subpath
+      const dest = this.app.metadataCache.getFirstLinkpathDest(parsed.target, sourcePath || '');
+      if (!dest || !this.isGlossaryFile(dest)) continue;
+      out.push({ start, end, linktext: `${dest.basename}#${parsed.subpath}`, display: parsed.display, source: m[0] });
+    }
+    return out;
+  },
+
+  openUnlinkPreview(files, onApply) {
+    new UnlinkPreviewModal(this.app, files, this, onApply).open();
+  },
+
+  async unlinkCurrent() {
+    const file = this.app.workspace.getActiveFile();
+    if (!file) { new Notice(t('notice.noActiveNote')); return; }
+    const text = await this.app.vault.cachedRead(file);
+    const links = this.findHeadingLinks(text, file.path);
+    if (!links.length) { new Notice(t('notice.noHeadingLinks')); return; }
+    this.openUnlinkPreview([{ file, original: text, matches: links }], (results) => this.writeScopeResults(results));
+  },
+
+  unlinkSelection(editor) {
+    const sel = editor.getSelection();
+    if (!sel) { new Notice(t('notice.noSelection')); return; }
+    const file = this.app.workspace.getActiveFile();
+    const links = this.findHeadingLinks(sel, file ? file.path : '');
+    if (!links.length) { new Notice(t('notice.noHeadingLinks')); return; }
+    this.openUnlinkPreview([{ file: null, original: sel, matches: links, label: t('label.selection') }], (results) => {
+      editor.replaceSelection(results[0].newText);
+      new Notice(t('notice.linksRemoved', { links: plural('link', results[0].count) }));
+    });
+  },
+
+  async unlinkScope() {
+    const files = await this.scanScopeMatches((text, file) => this.findHeadingLinks(text, file.path));
+    if (!files.length) { new Notice(t('notice.noHeadingLinks')); return; }
+    this.openUnlinkPreview(files, (results) => this.writeScopeResults(results));
+  },
+
+  chooseTerm(candidates, title, action) {
+    const list = (candidates || []).filter(Boolean);
+    if (list.length <= 1) return action(list[0]);
+    new ChooseTermModal(this.app, { title, terms: list, onChoose: action }).open();
+  },
+
+  showLinkMenu(evt, linktext, display, file, nearOffset, occurrence, alts) {
+    const sourcePath = file ? file.path : '';
+    const candidates = (alts && alts.length) ? [linktext, ...alts] : [linktext];
+    const label = this.labelOf(linktext);
+    const groups = [];
+
+    if (file && this.settings.menuTurnInto) {
+      const scope = this.settings.linkFirstOnly ? t('scope.first') : t('scope.all');
+      groups.push((menu) => {
+        menu.addItem((i) => i.setTitle(t('menu.linkToHeading')).setIcon('link')
+          .onClick(() => this.chooseTerm(candidates, t('menu.linkDisplayTo', { display }),
+            (c) => this.materializeSingle(file, linktext, display, nearOffset, occurrence, c))));
+        menu.addItem((i) => i.setTitle(t('menu.linkScopeThisNote', { scope, display })).setIcon('links-coming-in')
+          .onClick(() => this.chooseTerm(candidates, t('menu.linkScopeTo', { scope, display }),
+            (c) => this.materializeTerm(file, linktext, c))));
+        menu.addItem((i) => i.setTitle(t('menu.linkScopeAllNotes', { scope, display })).setIcon('links-going-out')
+          .onClick(() => this.chooseTerm(candidates, t('menu.linkScopeTo', { scope, display }),
+            (c) => this.materializeTermScope(linktext, c))));
+      });
+    }
+    if (this.settings.menuExclude) {
+      // Exclude the heading itself: drops the term (and all its word forms) from the index.
+      groups.push((menu) => this.addExclusionMenuItem(menu, label));
+    }
+    if (this.settings.menuOpen) {
+      groups.push((menu) => {
+        menu.addItem((i) => i.setTitle(t('menu.openNote')).setIcon('file-text')
+          .onClick(() => this.chooseTerm(candidates, t('menu.openTitle'), (c) => this.openTerm(c, sourcePath, false))));
+        menu.addItem((i) => i.setTitle(t('menu.openNewTab')).setIcon('file-plus')
+          .onClick(() => this.chooseTerm(candidates, t('menu.openNewTabTitle'), (c) => this.openTerm(c, sourcePath, true))));
+      });
+    }
+
+    if (!groups.length) return false;
+    const menu = new Menu();
+    groups.forEach((group, i) => { if (i) menu.addSeparator(); group(menu); });
+    evt.preventDefault();
+    menu.showAtMouseEvent(evt);
+    return true;
+  },
+
+  isExcluded(value) {
+    const v = value.toLowerCase();
+    return splitLines(this.settings.excludeTerms).some((l) => l.toLowerCase() === v);
+  },
+
+  // Toggle `value` (a heading text) in the excluded-headings list. A prefix is used for
+  // native menus (brand-prefixed wording); the plugin's own menu passes none.
+  addExclusionMenuItem(menu, value, prefix = '') {
+    const noun = t('exclude.terms');
+    if (this.isExcluded(value)) {
+      menu.addItem((i) => i.setTitle(t(prefix ? 'exclude.removePrefixed' : 'exclude.remove', { value, noun })).setIcon('rotate-ccw')
+        .onClick(() => this.setExcluded(value, false)));
+    } else {
+      menu.addItem((i) => i.setTitle(t(prefix ? 'exclude.addPrefixed' : 'exclude.add', { value, noun })).setIcon('trash-2')
+        .onClick(() => this.setExcluded(value, true)));
+    }
+  },
+
+  async setExcluded(value, add) {
+    const v = value.toLowerCase();
+    const lines = splitLines(this.settings.excludeTerms);
+    const has = lines.some((l) => l.toLowerCase() === v);
+    if (add === has) { new Notice(t(add ? 'notice.alreadyExcluded' : 'notice.wasNotExcluded', { value })); return; }
+    this.settings.excludeTerms = (add ? [...lines, value] : lines.filter((l) => l.toLowerCase() !== v)).join('\n');
+    await this.saveSettings();
+    this.rebuildIndex();
+    this.rerenderViews();
+    this.updateStatusBar();
+    new Notice(t(add ? 'notice.addedToExcluded' : 'notice.removedFromExcluded', { value, where: t('exclude.terms') }));
+  },
+
+  // linkAs (optional) overrides which heading the occurrence links to — used when a
+  // word matches several headings and the user picks an alternative from the menu.
+  async materializeSingle(file, linktext, display, nearOffset, occurrence, linkAs) {
+    let created = false;
+    await this.app.vault.process(file, (text) => {
+      const matches = this.findMatches(text, this.currentFileBase(file.path), { protect: true })
+        .filter((m) => m.linktext === linktext && m.display === display);
+      if (!matches.length) return text;
+      let target = matches[0];
+      if (occurrence != null && matches[occurrence]) {
+        target = matches[occurrence];
+      } else if (nearOffset != null) {
+        target = matches.reduce((best, m) => (Math.abs(m.start - nearOffset) < Math.abs(best.start - nearOffset) ? m : best), matches[0]);
+      }
+      const chosen = (linkAs && linkAs !== target.linktext) ? { ...target, linktext: linkAs } : target;
+      created = true;
+      return this.applyLinks(text, [chosen]).newText;
+    });
+    if (!created) { new Notice(t('notice.occurrenceNotFound')); return; }
+    new Notice(t('notice.linkCreatedSingle'));
+    this.updateStatusBar();
+  },
+
+  async materializeTerm(file, linktext, linkAs) {
+    let count = 0;
+    await this.app.vault.process(file, (text) => {
+      let matches = this.findMatches(text, this.currentFileBase(file.path), { protect: true })
+        .filter((m) => m.linktext === linktext);
+      if (!matches.length) return text;
+      if (this.settings.linkFirstOnly) matches = matches.slice(0, 1);
+      if (linkAs && linkAs !== linktext) matches = matches.map((m) => ({ ...m, linktext: linkAs }));
+      count = matches.length;
+      return this.applyLinks(text, matches).newText;
+    });
+    if (!count) { new Notice(t('notice.noOccurrences')); return; }
+    new Notice(t('notice.linksCreated', { links: plural('link', count) }));
+    this.updateStatusBar();
+  },
+
+  async materializeTermScope(linktext, linkAs) {
+    const term = linkAs || linktext;
+    const files = await this.scanScopeMatches((text, file) => {
+      let matches = this.findMatches(text, this.currentFileBase(file.path), { protect: true })
+        .filter((m) => m.linktext === linktext);
+      if (this.settings.linkFirstOnly) matches = matches.slice(0, 1);
+      // Heading already chosen → no per-occurrence picker in the preview.
+      return matches.map((m) => ({ ...m, linktext: term, alts: null }));
+    });
+    if (!files.length) { new Notice(t('notice.noOccurrences')); return; }
+    this.openMaterializePreview(files, (results) => this.writeScopeResults(results));
+  },
+};
