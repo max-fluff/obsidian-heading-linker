@@ -108,6 +108,7 @@ module.exports = {
 
   // Autocomplete
   'suggest.inflection': 'form of a heading in {file}',
+  'suggest.alias': 'alias “{form}” · {file}',
 
   // Settings — sources
   'set.heading.sources': 'Heading sources',
@@ -123,6 +124,8 @@ module.exports = {
   'set.sourceList.remove': 'Remove',
   'set.sourceList.addAria': 'Add source',
   'set.noSourcesStatus': 'No sources chosen yet.',
+  'set.headingAliases.name': 'Heading aliases',
+  'set.headingAliases.desc': 'Read `%% alias: a, b %%` comments under a heading as extra wordings that link to it. Turn off to skip reading file bodies (faster in very large vaults).',
 
   // Settings — scope
   'set.heading.scope': 'Scope',

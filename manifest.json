@@ -1,7 +1,7 @@
 {
   "id": "heading-linker",
   "name": "Heading Linker",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "minAppVersion": "1.4.0",
   "description": "Highlights words in any inflected form and turns them into links to matching headings inside your glossary files.",
   "author": "max-fluff",

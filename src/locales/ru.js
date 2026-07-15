@@ -98,6 +98,7 @@ module.exports = {
   'notice.ignoreRemoved': '«{entry}» больше не игнорируется.',
 
   'suggest.inflection': 'форма заголовка из {file}',
+  'suggest.alias': 'алиас «{form}» · {file}',
 
   'set.heading.sources': 'Источники заголовков',
   'set.glossaryMode.name': 'Откуда брать заголовки',
@@ -112,6 +113,8 @@ module.exports = {
   'set.sourceList.remove': 'Убрать',
   'set.sourceList.addAria': 'Добавить источник',
   'set.noSourcesStatus': 'Источники пока не выбраны.',
+  'set.headingAliases.name': 'Алиасы заголовков',
+  'set.headingAliases.desc': 'Читать комментарии `%% alias: a, b %%` под заголовком как доп. формулировки, ведущие на него. Выключите, чтобы не читать тела файлов (быстрее в очень больших хранилищах).',
 
   'set.heading.scope': 'Область',
   'set.scopeMode.name': 'Где связывать',

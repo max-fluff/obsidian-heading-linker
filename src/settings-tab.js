@@ -20,6 +20,9 @@ class HeadingLinkerSettingTab extends PluginSettingTab {
     };
     // Scope changes don't touch the heading index, so refresh views without a rebuild.
     const saveScope = async () => { await this.plugin.saveSettings(); this.plugin.rerenderViews(); this.plugin.updateStatusBar(); };
+    // Source-set changes may pull in files whose alias comments must be read, so reload
+    // aliases (which rebuilds). force re-reads every file — for toggling aliases on/off.
+    const saveSources = async (force) => { await this.plugin.saveSettings(); await this.plugin.loadAliases(force); this.plugin.rerenderViews(); this.plugin.updateStatusBar(); this.renderStatus(); };
 
     new Setting(containerEl).setName(t('set.heading.sources')).setHeading();
 
@@ -30,7 +33,7 @@ class HeadingLinkerSettingTab extends PluginSettingTab {
         .addOption('selected', t('set.glossaryMode.selected'))
         .addOption('vault', t('set.glossaryMode.vault'))
         .setValue(s.glossaryMode)
-        .onChange(async (v) => { s.glossaryMode = v; await save(true); this.display(); }));
+        .onChange(async (v) => { s.glossaryMode = v; await saveSources(); this.display(); }));
 
     // Files-and-folders editor that rebuilds the index on change (source lists) and shares
     // the source-list labels.
@@ -39,7 +42,7 @@ class HeadingLinkerSettingTab extends PluginSettingTab {
       name,
       desc,
       get: () => s[key],
-      set: async (v) => { s[key] = v; await save(true); this.renderStatus(); },
+      set: async (v) => { s[key] = v; await saveSources(); },
       normalize: sanitizeFolder,
       attachSuggest: folderSuggestAvailable()
         ? (inputEl, onPick) => new PathSuggest(this.app, inputEl, onPick)
@@ -69,6 +72,11 @@ class HeadingLinkerSettingTab extends PluginSettingTab {
         this.renderStatus();
       };
     }
+
+    new Setting(containerEl)
+      .setName(t('set.headingAliases.name'))
+      .setDesc(t('set.headingAliases.desc'))
+      .addToggle((c) => c.setValue(s.headingAliases).onChange(async (v) => { s.headingAliases = v; await saveSources(true); }));
 
     new Setting(containerEl).setName(t('set.heading.scope')).setHeading();
 

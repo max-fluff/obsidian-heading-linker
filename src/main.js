@@ -12,6 +12,32 @@ const materialize = require('./materialize');
 const { HeadingSuggest, suggestAvailable } = require('./heading-suggest');
 const { initI18n, t, plural } = require('./shared/i18n');
 
+// Per-heading aliases from `%% alias: a, b %%` comments inside a heading's section.
+// headings is metadataCache's headings array (with positions); returns Map<heading, [alias]>.
+function parseHeadingAliases(text, headings) {
+  const lines = text.split('\n');
+  const map = new Map();
+  for (let i = 0; i < headings.length; i++) {
+    const start = headings[i].position.start.line + 1;
+    const end = i + 1 < headings.length ? headings[i + 1].position.start.line : lines.length;
+    const region = lines.slice(start, end).join('\n');
+    const found = [];
+    let c;
+    const comment = /%%([\s\S]*?)%%/g;
+    while ((c = comment.exec(region)) !== null) {
+      const am = c[1].match(/^\s*alias(?:es)?\s*:\s*(.+)$/im);
+      if (am) for (const a of am[1].split(',')) { const s = a.trim(); if (s) found.push(s); }
+    }
+    if (found.length) {
+      const key = headings[i].heading;
+      const set = map.get(key) || new Set();
+      found.forEach((a) => set.add(a));
+      map.set(key, set);
+    }
+  }
+  return new Map([...map].map(([k, v]) => [k, [...v]]));
+}
+
 // Notice strings for setPathInList, per list and add/remove.
 const NOTICE_KEYS = {
   glossarySources: { add: 'notice.sourceAdded', remove: 'notice.sourceRemoved' },
@@ -38,9 +64,12 @@ class HeadingLinkerPlugin extends Plugin {
     this.index = { byKey: new Map(), termCount: 0 };
     this.keysCache = new Map();
     this.terms = [];
-    // path -> JSON(headings) as of the last rebuild, so the 'changed' handler can tell
-    // "this file's headings changed" from "some other line changed" and skip needless rebuilds.
+    // path -> JSON(headings + aliases) as of the last rebuild, so the 'changed' handler can
+    // tell "this file's terms changed" from "some other line changed" and skip needless rebuilds.
     this.headingFingerprints = new Map();
+    // path -> Map<heading, [alias]>, parsed from `%%` comments; filled lazily, invalidated
+    // on change, so rebuildIndex never re-reads file bodies.
+    this.aliasCache = new Map();
 
     await this.loadLanguages();
     this.rebuildIndex();
@@ -53,11 +82,12 @@ class HeadingLinkerPlugin extends Plugin {
     this.registerEvent(this.app.workspace.on('file-open', () => this.updateStatusBarDebounced()));
     this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.updateStatusBarDebounced()));
 
-    this.app.workspace.onLayoutReady(() => { this.rebuildIndex(); this.updateStatusBar(); });
+    this.app.workspace.onLayoutReady(async () => { await this.loadAliases(); this.updateStatusBar(); });
 
-    this.registerEvent(this.app.metadataCache.on('changed', (file) => {
+    this.registerEvent(this.app.metadataCache.on('changed', async (file) => {
       if (!this.isGlossaryFile(file)) return;
-      const next = JSON.stringify(this.headingsOf(file));
+      await this.loadFileAliases(file);
+      const next = this.fileFingerprint(file);
       if (this.headingFingerprints.get(file.path) === next) return;
       this.headingFingerprints.set(file.path, next);
       this.scheduleRebuild();
@@ -70,11 +100,13 @@ class HeadingLinkerPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('delete', (file) => {
       if (!this.isGlossaryPath(file.path)) return;
       this.headingFingerprints.delete(file.path);
+      this.aliasCache.delete(file.path);
       this.scheduleRebuild();
     }));
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
       if (!this.isGlossaryPath(file.path) && !this.isGlossaryPath(oldPath)) return;
       this.headingFingerprints.delete(oldPath);
+      this.aliasCache.delete(oldPath);
       this.scheduleRebuild();
     }));
 
@@ -272,6 +304,36 @@ class HeadingLinkerPlugin extends Plugin {
       .map((h) => ({ text: h.heading, level: h.level }));
   }
 
+  // Fingerprint of what defines a file's terms — its headings and their aliases. The
+  // 'changed' handler compares against this to skip rebuilds on unrelated body edits.
+  fileFingerprint(file) {
+    const aliases = this.aliasCache.get(file.path);
+    return JSON.stringify({ h: this.headingsOf(file), a: aliases ? [...aliases] : [] });
+  }
+
+  // Read and cache one glossary file's `%%` alias comments. The only place a body is
+  // read; called on first index and when the file changes — never during a plain rebuild.
+  async loadFileAliases(file) {
+    if (!this.settings.headingAliases) { this.aliasCache.set(file.path, new Map()); return; }
+    const cache = this.app.metadataCache.getFileCache(file);
+    const headings = (cache && cache.headings) || [];
+    if (!headings.length) { this.aliasCache.set(file.path, new Map()); return; }
+    try {
+      const text = await this.app.vault.cachedRead(file);
+      this.aliasCache.set(file.path, parseHeadingAliases(text, headings));
+    } catch (e) {
+      this.aliasCache.set(file.path, new Map());
+    }
+  }
+
+  // Fill the alias cache for glossary files (only unread ones unless forced), then rebuild.
+  async loadAliases(force = false) {
+    for (const file of this.glossaryFilesList()) {
+      if (force || !this.aliasCache.has(file.path)) await this.loadFileAliases(file);
+    }
+    this.rebuildIndex();
+  }
+
   // Basename of `path` when it is a glossary file, else null — the note's own headings
   // are skipped so a glossary file doesn't link to itself.
   currentFileBase(path) {
@@ -312,13 +374,12 @@ class HeadingLinkerPlugin extends Plugin {
   // Replace each match (sorted, non-overlapping) with a wikilink, right to left.
   applyLinks(text, matches) {
     const sorted = matches.slice().sort((a, b) => a.start - b.start);
-    const links = sorted.map((m) => this.wikiLink(m.linktext, m.display, inTableCell(text, m.start)));
     let out = text;
     for (let j = sorted.length - 1; j >= 0; j--) {
-      out = out.slice(0, sorted[j].start) + links[j] + out.slice(sorted[j].end);
+      const link = this.wikiLink(sorted[j].linktext, sorted[j].display, inTableCell(text, sorted[j].start));
+      out = out.slice(0, sorted[j].start) + link + out.slice(sorted[j].end);
     }
-    const changes = sorted.map((m, j) => ({ start: m.start, before: m.display, after: links[j] }));
-    return { newText: out, changes };
+    return { newText: out };
   }
 
   // Inverse of applyLinks: replace each heading-link span with its plain display text,
@@ -425,8 +486,9 @@ class HeadingLinkerPlugin extends Plugin {
     const lines = splitLines(this.settings[listKey]);
     this.settings[listKey] = (add ? [...lines, entry] : lines.filter((l) => sanitizeFolder(l) !== entry)).join('\n');
     await this.saveSettings();
-    // Source lists change the term set; scope lists only change where links land.
-    if (listKey === 'glossarySources' || listKey === 'excludeSources') this.rebuildIndex();
+    // Source lists change the term set (and may bring in files with aliases to read);
+    // scope lists only change where links land.
+    if (listKey === 'glossarySources' || listKey === 'excludeSources') await this.loadAliases();
     this.rerenderViews();
     this.updateStatusBar();
     new Notice(t(NOTICE_KEYS[listKey][add ? 'add' : 'remove'], { entry }));

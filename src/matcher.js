@@ -34,7 +34,7 @@ module.exports = {
 
   tokenizeForm(form) {
     const words = [...form.matchAll(/[\p{L}\p{Nd}]+/gu)].map((m) => m[0]);
-    return words.map((raw) => ({ raw, lower: raw.toLowerCase(), keys: this.keysFor(raw) }));
+    return words.map((raw) => ({ raw, keys: this.keysFor(raw) }));
   },
 
   rebuildIndex() {
@@ -50,8 +50,9 @@ module.exports = {
     this.headingFingerprints = new Map();
     for (const file of this.glossaryFilesList()) {
       const headings = this.headingsOf(file);
-      this.headingFingerprints.set(file.path, JSON.stringify(headings));
+      this.headingFingerprints.set(file.path, this.fileFingerprint(file));
       const base = file.basename;
+      const aliasMap = this.aliasCache && this.aliasCache.get(file.path);
       for (const { text: label, level } of headings) {
         if (!levels.has(level)) continue;
         // A heading with these can't be put in a [[File#Heading|word]] target: '|' starts
@@ -59,21 +60,31 @@ module.exports = {
         if (/[[\]|#^]/.test(label)) continue;
         if (excludeTerms.has(label.toLowerCase())) continue;
         if (label.trim().length < minTermLength) continue;
-        const words = this.tokenizeForm(label);
-        if (!words.length) continue;
+        const labelWords = this.tokenizeForm(label);
+        if (!labelWords.length) continue;
 
         const linktext = `${base}#${label}`;
         if (linktexts.has(linktext)) continue; // duplicate heading in the same file
         linktexts.add(linktext);
-        // Mostly-uppercase headings (acronyms like "IT", "NASA") match case-sensitively
-        // under smart case, so "IT" doesn't link every "it".
-        const cs = isAcronymish(label);
-        terms.push({ linktext, label, fileBase: base, path: file.path });
+        const aliases = (aliasMap && aliasMap.get(label)) || [];
+        // aliases ride on the term so the autocomplete can prefix-match them too.
+        terms.push({ linktext, label, fileBase: base, path: file.path, aliases });
 
-        const matcher = { linktext, label, fileBase: base, words, wordCount: words.length, cs };
-        for (const k of words[0].keys) {
-          if (!byKey.has(k)) byKey.set(k, []);
-          byKey.get(k).push(matcher);
+        // The heading text, plus any `%% alias: … %%` wordings, all matched to the same
+        // link. Smart case is decided per form (an acronym alias like "CNS" stays cased).
+        const forms = [{ text: label, words: labelWords }];
+        for (const a of aliases) {
+          if (a.toLowerCase() === label.toLowerCase() || a.trim().length < minTermLength) continue;
+          const w = this.tokenizeForm(a);
+          if (w.length) forms.push({ text: a, words: w });
+        }
+        for (const f of forms) {
+          // cs/caseText are per form, so an acronym alias like "CNS" is cased on its own spelling.
+          const matcher = { linktext, label, fileBase: base, words: f.words, wordCount: f.words.length, cs: isAcronymish(f.text), caseText: f.text };
+          for (const k of f.words[0].keys) {
+            if (!byKey.has(k)) byKey.set(k, []);
+            byKey.get(k).push(matcher);
+          }
         }
       }
     }
@@ -130,8 +141,8 @@ module.exports = {
           const t2keys = k === 0 ? t2.keys : this.keysFor(t2.raw);
           if (!t2keys.some((kk) => w.keys.includes(kk))) return false;
         }
-        // Smart case: an acronym heading only fits when the surface text matches its case.
-        if (smartCase && c.cs && text.slice(tokens[i].start, tokens[i + wc - 1].end) !== c.label) return false;
+        // Smart case: an acronym form only fits when the surface text matches its case.
+        if (smartCase && c.cs && text.slice(tokens[i].start, tokens[i + wc - 1].end) !== c.caseText) return false;
         return true;
       };
 
@@ -185,6 +196,7 @@ module.exports = {
     push(/```[\s\S]*?```/g);
     push(/~~~[\s\S]*?~~~/g);
     push(/`[^`\n]+`/g);
+    push(/%%[\s\S]*?%%/g); // Obsidian comments (where alias declarations live)
     push(/\[\[[^\]]*\]\]/g);
     push(/\[[^\]]*\]\([^)]*\)/g);
     push(/(?:https?:\/\/|www\.)\S+/g);
@@ -240,6 +252,7 @@ module.exports = {
     if (this.settings.skipHeadings && /^[ \t]*#{1,6}[ \t]/.test(line)) return true;
     const col = pos - lineStart;
     return inMatch(line, col, /`[^`\n]+`/g)
+      || inMatch(line, col, /%%[^%\n]*%%/g)
       || inMatch(line, col, /\[\[[^\]]*\]\]/g)
       || inMatch(line, col, /\[[^\]]*\]\([^)]*\)/g)
       || inMatch(line, col, /(?:https?:\/\/|www\.)\S+/g);

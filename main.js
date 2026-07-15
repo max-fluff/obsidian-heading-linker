@@ -16,6 +16,8 @@ var require_constants = __commonJS({
       // file OR folder paths (one per line) whose headings are the terms; used when mode = 'selected'
       excludeSources: "",
       // file OR folder paths never used as heading sources (even in vault mode)
+      headingAliases: true,
+      // read `%% alias: … %%` comments in glossary files as extra matching forms
       scopeMode: "vault",
       // 'folders' | 'vault' — which notes get highlighted/linked
       scopeFolders: "",
@@ -1117,10 +1119,17 @@ var require_settings_tab = __commonJS({
           this.plugin.rerenderViews();
           this.plugin.updateStatusBar();
         };
+        const saveSources = async (force) => {
+          await this.plugin.saveSettings();
+          await this.plugin.loadAliases(force);
+          this.plugin.rerenderViews();
+          this.plugin.updateStatusBar();
+          this.renderStatus();
+        };
         new Setting(containerEl).setName(t2("set.heading.sources")).setHeading();
         new Setting(containerEl).setName(t2("set.glossaryMode.name")).setDesc(t2("set.glossaryMode.desc")).addDropdown((d) => d.addOption("selected", t2("set.glossaryMode.selected")).addOption("vault", t2("set.glossaryMode.vault")).setValue(s.glossaryMode).onChange(async (v) => {
           s.glossaryMode = v;
-          await save(true);
+          await saveSources();
           this.display();
         }));
         const sourceList = (name, desc, key) => renderFolderList(containerEl, {
@@ -1130,8 +1139,7 @@ var require_settings_tab = __commonJS({
           get: () => s[key],
           set: async (v) => {
             s[key] = v;
-            await save(true);
-            this.renderStatus();
+            await saveSources();
           },
           normalize: sanitizeFolder2,
           attachSuggest: folderSuggestAvailable() ? (inputEl, onPick) => new PathSuggest(this.app, inputEl, onPick) : null,
@@ -1159,6 +1167,10 @@ var require_settings_tab = __commonJS({
             this.renderStatus();
           };
         }
+        new Setting(containerEl).setName(t2("set.headingAliases.name")).setDesc(t2("set.headingAliases.desc")).addToggle((c) => c.setValue(s.headingAliases).onChange(async (v) => {
+          s.headingAliases = v;
+          await saveSources(true);
+        }));
         new Setting(containerEl).setName(t2("set.heading.scope")).setHeading();
         new Setting(containerEl).setName(t2("set.scopeMode.name")).setDesc(t2("set.scopeMode.desc")).addDropdown((d) => d.addOption("folders", t2("set.scopeMode.folders")).addOption("vault", t2("set.scopeMode.vault")).setValue(s.scopeMode).onChange(async (v) => {
           s.scopeMode = v;
@@ -1371,7 +1383,7 @@ var require_matcher = __commonJS({
       },
       tokenizeForm(form) {
         const words = [...form.matchAll(/[\p{L}\p{Nd}]+/gu)].map((m) => m[0]);
-        return words.map((raw) => ({ raw, lower: raw.toLowerCase(), keys: this.keysFor(raw) }));
+        return words.map((raw) => ({ raw, keys: this.keysFor(raw) }));
       },
       rebuildIndex() {
         this.keysCache = /* @__PURE__ */ new Map();
@@ -1384,8 +1396,9 @@ var require_matcher = __commonJS({
         this.headingFingerprints = /* @__PURE__ */ new Map();
         for (const file of this.glossaryFilesList()) {
           const headings = this.headingsOf(file);
-          this.headingFingerprints.set(file.path, JSON.stringify(headings));
+          this.headingFingerprints.set(file.path, this.fileFingerprint(file));
           const base = file.basename;
+          const aliasMap = this.aliasCache && this.aliasCache.get(file.path);
           for (const { text: label, level } of headings) {
             if (!levels.has(level))
               continue;
@@ -1395,20 +1408,30 @@ var require_matcher = __commonJS({
               continue;
             if (label.trim().length < minTermLength)
               continue;
-            const words = this.tokenizeForm(label);
-            if (!words.length)
+            const labelWords = this.tokenizeForm(label);
+            if (!labelWords.length)
               continue;
             const linktext = `${base}#${label}`;
             if (linktexts.has(linktext))
               continue;
             linktexts.add(linktext);
-            const cs = isAcronymish(label);
-            terms.push({ linktext, label, fileBase: base, path: file.path });
-            const matcher2 = { linktext, label, fileBase: base, words, wordCount: words.length, cs };
-            for (const k of words[0].keys) {
-              if (!byKey.has(k))
-                byKey.set(k, []);
-              byKey.get(k).push(matcher2);
+            const aliases = aliasMap && aliasMap.get(label) || [];
+            terms.push({ linktext, label, fileBase: base, path: file.path, aliases });
+            const forms = [{ text: label, words: labelWords }];
+            for (const a of aliases) {
+              if (a.toLowerCase() === label.toLowerCase() || a.trim().length < minTermLength)
+                continue;
+              const w = this.tokenizeForm(a);
+              if (w.length)
+                forms.push({ text: a, words: w });
+            }
+            for (const f of forms) {
+              const matcher2 = { linktext, label, fileBase: base, words: f.words, wordCount: f.words.length, cs: isAcronymish(f.text), caseText: f.text };
+              for (const k of f.words[0].keys) {
+                if (!byKey.has(k))
+                  byKey.set(k, []);
+                byKey.get(k).push(matcher2);
+              }
             }
           }
         }
@@ -1469,7 +1492,7 @@ var require_matcher = __commonJS({
               if (!t2keys.some((kk) => w.keys.includes(kk)))
                 return false;
             }
-            if (smartCase && c.cs && text.slice(tokens[i].start, tokens[i + wc - 1].end) !== c.label)
+            if (smartCase && c.cs && text.slice(tokens[i].start, tokens[i + wc - 1].end) !== c.caseText)
               return false;
             return true;
           };
@@ -1531,6 +1554,7 @@ var require_matcher = __commonJS({
         push(/```[\s\S]*?```/g);
         push(/~~~[\s\S]*?~~~/g);
         push(/`[^`\n]+`/g);
+        push(/%%[\s\S]*?%%/g);
         push(/\[\[[^\]]*\]\]/g);
         push(/\[[^\]]*\]\([^)]*\)/g);
         push(/(?:https?:\/\/|www\.)\S+/g);
@@ -1594,7 +1618,7 @@ var require_matcher = __commonJS({
         if (this.settings.skipHeadings && /^[ \t]*#{1,6}[ \t]/.test(line))
           return true;
         const col = pos - lineStart;
-        return inMatch(line, col, /`[^`\n]+`/g) || inMatch(line, col, /\[\[[^\]]*\]\]/g) || inMatch(line, col, /\[[^\]]*\]\([^)]*\)/g) || inMatch(line, col, /(?:https?:\/\/|www\.)\S+/g);
+        return inMatch(line, col, /`[^`\n]+`/g) || inMatch(line, col, /%%[^%\n]*%%/g) || inMatch(line, col, /\[\[[^\]]*\]\]/g) || inMatch(line, col, /\[[^\]]*\]\([^)]*\)/g) || inMatch(line, col, /(?:https?:\/\/|www\.)\S+/g);
       }
     };
     function inMatch(line, col, re) {
@@ -2441,9 +2465,13 @@ var require_heading_suggest = __commonJS({
         for (const term of plugin.terms || []) {
           if (byLink.has(term.linktext) || term.fileBase === ownFile)
             continue;
-          if (term.label.toLowerCase().startsWith(qLower)) {
-            byLink.set(term.linktext, { linktext: term.linktext, label: term.label, fileBase: term.fileBase, kind: "prefix" });
-          }
+          let form = null;
+          if (term.label.toLowerCase().startsWith(qLower))
+            form = term.label;
+          else if (term.aliases)
+            form = term.aliases.find((a) => a.toLowerCase().startsWith(qLower));
+          if (form)
+            byLink.set(term.linktext, { linktext: term.linktext, label: term.label, fileBase: term.fileBase, kind: "prefix", matchedForm: form });
         }
         const items = [...byLink.values()];
         const rank = (it) => it.kind === "form" ? 0 : 1;
@@ -2453,14 +2481,19 @@ var require_heading_suggest = __commonJS({
       renderSuggestion(item, el) {
         el.addClass("heading-suggestion");
         el.createSpan({ cls: "heading-suggestion-title", text: item.label });
-        el.createSpan({ cls: "heading-suggestion-note", text: item.kind === "form" ? t2("suggest.inflection", { file: item.fileBase }) : item.fileBase });
+        let note = item.fileBase;
+        if (item.kind === "form")
+          note = t2("suggest.inflection", { file: item.fileBase });
+        else if (item.matchedForm && item.matchedForm.toLowerCase() !== item.label.toLowerCase())
+          note = t2("suggest.alias", { form: item.matchedForm, file: item.fileBase });
+        el.createSpan({ cls: "heading-suggestion-note", text: note });
       }
       selectSuggestion(item) {
         const ctx = this.context;
         if (!ctx)
           return;
         const editor = ctx.editor;
-        const display = item.kind === "form" ? ctx.query : item.label;
+        const display = item.kind === "form" ? ctx.query : item.matchedForm || item.label;
         const inTable = inTableCell2(editor.getValue(), editor.posToOffset(ctx.start));
         const link = this.plugin.wikiLink(item.linktext, display, inTable);
         editor.replaceRange(link, ctx.start, ctx.end);
@@ -2571,6 +2604,7 @@ var require_en2 = __commonJS({
       "notice.ignoreRemoved": 'No longer ignoring "{entry}".',
       // Autocomplete
       "suggest.inflection": "form of a heading in {file}",
+      "suggest.alias": "alias \u201C{form}\u201D \xB7 {file}",
       // Settings — sources
       "set.heading.sources": "Heading sources",
       "set.glossaryMode.name": "Collect headings from",
@@ -2585,6 +2619,8 @@ var require_en2 = __commonJS({
       "set.sourceList.remove": "Remove",
       "set.sourceList.addAria": "Add source",
       "set.noSourcesStatus": "No sources chosen yet.",
+      "set.headingAliases.name": "Heading aliases",
+      "set.headingAliases.desc": "Read `%% alias: a, b %%` comments under a heading as extra wordings that link to it. Turn off to skip reading file bodies (faster in very large vaults).",
       // Settings — scope
       "set.heading.scope": "Scope",
       "set.scopeMode.name": "Where to link",
@@ -2761,6 +2797,7 @@ var require_ru2 = __commonJS({
       "notice.ignoreAdded": "\xAB{entry}\xBB \u0438\u0433\u043D\u043E\u0440\u0438\u0440\u0443\u0435\u0442\u0441\u044F \u043A\u0430\u043A \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A.",
       "notice.ignoreRemoved": "\xAB{entry}\xBB \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435 \u0438\u0433\u043D\u043E\u0440\u0438\u0440\u0443\u0435\u0442\u0441\u044F.",
       "suggest.inflection": "\u0444\u043E\u0440\u043C\u0430 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0430 \u0438\u0437 {file}",
+      "suggest.alias": "\u0430\u043B\u0438\u0430\u0441 \xAB{form}\xBB \xB7 {file}",
       "set.heading.sources": "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u0432",
       "set.glossaryMode.name": "\u041E\u0442\u043A\u0443\u0434\u0430 \u0431\u0440\u0430\u0442\u044C \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438",
       "set.glossaryMode.desc": "\u041A\u0430\u043A\u0438\u0435 \u0437\u0430\u043C\u0435\u0442\u043A\u0438 \u043E\u0442\u0434\u0430\u044E\u0442 \u0441\u0432\u043E\u0438 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438 \u043A\u0430\u043A \u0442\u0435\u0440\u043C\u0438\u043D\u044B \u0434\u043B\u044F \u0441\u0441\u044B\u043B\u043E\u043A.",
@@ -2774,6 +2811,8 @@ var require_ru2 = __commonJS({
       "set.sourceList.remove": "\u0423\u0431\u0440\u0430\u0442\u044C",
       "set.sourceList.addAria": "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A",
       "set.noSourcesStatus": "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 \u043F\u043E\u043A\u0430 \u043D\u0435 \u0432\u044B\u0431\u0440\u0430\u043D\u044B.",
+      "set.headingAliases.name": "\u0410\u043B\u0438\u0430\u0441\u044B \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u0432",
+      "set.headingAliases.desc": "\u0427\u0438\u0442\u0430\u0442\u044C \u043A\u043E\u043C\u043C\u0435\u043D\u0442\u0430\u0440\u0438\u0438 `%% alias: a, b %%` \u043F\u043E\u0434 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u043C \u043A\u0430\u043A \u0434\u043E\u043F. \u0444\u043E\u0440\u043C\u0443\u043B\u0438\u0440\u043E\u0432\u043A\u0438, \u0432\u0435\u0434\u0443\u0449\u0438\u0435 \u043D\u0430 \u043D\u0435\u0433\u043E. \u0412\u044B\u043A\u043B\u044E\u0447\u0438\u0442\u0435, \u0447\u0442\u043E\u0431\u044B \u043D\u0435 \u0447\u0438\u0442\u0430\u0442\u044C \u0442\u0435\u043B\u0430 \u0444\u0430\u0439\u043B\u043E\u0432 (\u0431\u044B\u0441\u0442\u0440\u0435\u0435 \u0432 \u043E\u0447\u0435\u043D\u044C \u0431\u043E\u043B\u044C\u0448\u0438\u0445 \u0445\u0440\u0430\u043D\u0438\u043B\u0438\u0449\u0430\u0445).",
       "set.heading.scope": "\u041E\u0431\u043B\u0430\u0441\u0442\u044C",
       "set.scopeMode.name": "\u0413\u0434\u0435 \u0441\u0432\u044F\u0437\u044B\u0432\u0430\u0442\u044C",
       "set.scopeMode.desc": "\u0412 \u043A\u0430\u043A\u0438\u0445 \u0437\u0430\u043C\u0435\u0442\u043A\u0430\u0445 \u0441\u043B\u043E\u0432\u0430 \u043F\u043E\u0434\u0441\u0432\u0435\u0447\u0438\u0432\u0430\u044E\u0442\u0441\u044F \u0438 \u043F\u0440\u0435\u0432\u0440\u0430\u0449\u0430\u044E\u0442\u0441\u044F \u0432 \u0441\u0441\u044B\u043B\u043A\u0438.",
@@ -2864,6 +2903,34 @@ var highlight = require_highlight();
 var materialize = require_materialize();
 var { HeadingSuggest, suggestAvailable } = require_heading_suggest();
 var { initI18n, t, plural } = require_i18n();
+function parseHeadingAliases(text, headings) {
+  const lines = text.split("\n");
+  const map = /* @__PURE__ */ new Map();
+  for (let i = 0; i < headings.length; i++) {
+    const start = headings[i].position.start.line + 1;
+    const end = i + 1 < headings.length ? headings[i + 1].position.start.line : lines.length;
+    const region = lines.slice(start, end).join("\n");
+    const found = [];
+    let c;
+    const comment = /%%([\s\S]*?)%%/g;
+    while ((c = comment.exec(region)) !== null) {
+      const am = c[1].match(/^\s*alias(?:es)?\s*:\s*(.+)$/im);
+      if (am)
+        for (const a of am[1].split(",")) {
+          const s = a.trim();
+          if (s)
+            found.push(s);
+        }
+    }
+    if (found.length) {
+      const key = headings[i].heading;
+      const set = map.get(key) || /* @__PURE__ */ new Set();
+      found.forEach((a) => set.add(a));
+      map.set(key, set);
+    }
+  }
+  return new Map([...map].map(([k, v]) => [k, [...v]]));
+}
 var NOTICE_KEYS = {
   glossarySources: { add: "notice.sourceAdded", remove: "notice.sourceRemoved" },
   excludeSources: { add: "notice.ignoreAdded", remove: "notice.ignoreRemoved" },
@@ -2885,6 +2952,7 @@ var HeadingLinkerPlugin = class extends Plugin {
     this.keysCache = /* @__PURE__ */ new Map();
     this.terms = [];
     this.headingFingerprints = /* @__PURE__ */ new Map();
+    this.aliasCache = /* @__PURE__ */ new Map();
     await this.loadLanguages();
     this.rebuildIndex();
     this.scheduleRebuild = debounce(() => {
@@ -2898,14 +2966,15 @@ var HeadingLinkerPlugin = class extends Plugin {
     this.updateStatusBarDebounced = debounce(() => this.updateStatusBar(), 400, true);
     this.registerEvent(this.app.workspace.on("file-open", () => this.updateStatusBarDebounced()));
     this.registerEvent(this.app.workspace.on("active-leaf-change", () => this.updateStatusBarDebounced()));
-    this.app.workspace.onLayoutReady(() => {
-      this.rebuildIndex();
+    this.app.workspace.onLayoutReady(async () => {
+      await this.loadAliases();
       this.updateStatusBar();
     });
-    this.registerEvent(this.app.metadataCache.on("changed", (file) => {
+    this.registerEvent(this.app.metadataCache.on("changed", async (file) => {
       if (!this.isGlossaryFile(file))
         return;
-      const next = JSON.stringify(this.headingsOf(file));
+      await this.loadFileAliases(file);
+      const next = this.fileFingerprint(file);
       if (this.headingFingerprints.get(file.path) === next)
         return;
       this.headingFingerprints.set(file.path, next);
@@ -2919,12 +2988,14 @@ var HeadingLinkerPlugin = class extends Plugin {
       if (!this.isGlossaryPath(file.path))
         return;
       this.headingFingerprints.delete(file.path);
+      this.aliasCache.delete(file.path);
       this.scheduleRebuild();
     }));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       if (!this.isGlossaryPath(file.path) && !this.isGlossaryPath(oldPath))
         return;
       this.headingFingerprints.delete(oldPath);
+      this.aliasCache.delete(oldPath);
       this.scheduleRebuild();
     }));
     this.registerEvent(this.app.vault.on("modify", (file) => {
@@ -3124,6 +3195,40 @@ var HeadingLinkerPlugin = class extends Plugin {
       return [];
     return headings.filter((h) => typeof h.heading === "string" && h.heading.trim()).map((h) => ({ text: h.heading, level: h.level }));
   }
+  // Fingerprint of what defines a file's terms — its headings and their aliases. The
+  // 'changed' handler compares against this to skip rebuilds on unrelated body edits.
+  fileFingerprint(file) {
+    const aliases = this.aliasCache.get(file.path);
+    return JSON.stringify({ h: this.headingsOf(file), a: aliases ? [...aliases] : [] });
+  }
+  // Read and cache one glossary file's `%%` alias comments. The only place a body is
+  // read; called on first index and when the file changes — never during a plain rebuild.
+  async loadFileAliases(file) {
+    if (!this.settings.headingAliases) {
+      this.aliasCache.set(file.path, /* @__PURE__ */ new Map());
+      return;
+    }
+    const cache = this.app.metadataCache.getFileCache(file);
+    const headings = cache && cache.headings || [];
+    if (!headings.length) {
+      this.aliasCache.set(file.path, /* @__PURE__ */ new Map());
+      return;
+    }
+    try {
+      const text = await this.app.vault.cachedRead(file);
+      this.aliasCache.set(file.path, parseHeadingAliases(text, headings));
+    } catch (e) {
+      this.aliasCache.set(file.path, /* @__PURE__ */ new Map());
+    }
+  }
+  // Fill the alias cache for glossary files (only unread ones unless forced), then rebuild.
+  async loadAliases(force = false) {
+    for (const file of this.glossaryFilesList()) {
+      if (force || !this.aliasCache.has(file.path))
+        await this.loadFileAliases(file);
+    }
+    this.rebuildIndex();
+  }
   // Basename of `path` when it is a glossary file, else null — the note's own headings
   // are skipped so a glossary file doesn't link to itself.
   currentFileBase(path) {
@@ -3163,13 +3268,12 @@ var HeadingLinkerPlugin = class extends Plugin {
   // Replace each match (sorted, non-overlapping) with a wikilink, right to left.
   applyLinks(text, matches) {
     const sorted = matches.slice().sort((a, b) => a.start - b.start);
-    const links = sorted.map((m) => this.wikiLink(m.linktext, m.display, inTableCell(text, m.start)));
     let out = text;
     for (let j = sorted.length - 1; j >= 0; j--) {
-      out = out.slice(0, sorted[j].start) + links[j] + out.slice(sorted[j].end);
+      const link = this.wikiLink(sorted[j].linktext, sorted[j].display, inTableCell(text, sorted[j].start));
+      out = out.slice(0, sorted[j].start) + link + out.slice(sorted[j].end);
     }
-    const changes = sorted.map((m, j) => ({ start: m.start, before: m.display, after: links[j] }));
-    return { newText: out, changes };
+    return { newText: out };
   }
   // Inverse of applyLinks: replace each heading-link span with its plain display text,
   // right to left. The display has no pipe, so a table cell survives without escaping.
@@ -3284,7 +3388,7 @@ var HeadingLinkerPlugin = class extends Plugin {
     this.settings[listKey] = (add ? [...lines, entry] : lines.filter((l) => sanitizeFolder(l) !== entry)).join("\n");
     await this.saveSettings();
     if (listKey === "glossarySources" || listKey === "excludeSources")
-      this.rebuildIndex();
+      await this.loadAliases();
     this.rerenderViews();
     this.updateStatusBar();
     new Notice(t(NOTICE_KEYS[listKey][add ? "add" : "remove"], { entry }));

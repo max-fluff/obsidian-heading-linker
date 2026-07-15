@@ -61,12 +61,13 @@ class HeadingSuggest extends EditorSuggest {
       }
     }
 
-    // 'prefix' matches: the typed text starts a heading.
+    // 'prefix' matches: the typed text starts a heading or one of its aliases.
     for (const term of plugin.terms || []) {
       if (byLink.has(term.linktext) || term.fileBase === ownFile) continue;
-      if (term.label.toLowerCase().startsWith(qLower)) {
-        byLink.set(term.linktext, { linktext: term.linktext, label: term.label, fileBase: term.fileBase, kind: 'prefix' });
-      }
+      let form = null;
+      if (term.label.toLowerCase().startsWith(qLower)) form = term.label;
+      else if (term.aliases) form = term.aliases.find((a) => a.toLowerCase().startsWith(qLower));
+      if (form) byLink.set(term.linktext, { linktext: term.linktext, label: term.label, fileBase: term.fileBase, kind: 'prefix', matchedForm: form });
     }
 
     const items = [...byLink.values()];
@@ -78,16 +79,20 @@ class HeadingSuggest extends EditorSuggest {
   renderSuggestion(item, el) {
     el.addClass('heading-suggestion');
     el.createSpan({ cls: 'heading-suggestion-title', text: item.label });
-    // The source file both explains the target and tells apart same-named headings.
-    el.createSpan({ cls: 'heading-suggestion-note', text: item.kind === 'form' ? t('suggest.inflection', { file: item.fileBase }) : item.fileBase });
+    // The source file both explains the target and tells apart same-named headings;
+    // an alias match also shows which wording matched.
+    let note = item.fileBase;
+    if (item.kind === 'form') note = t('suggest.inflection', { file: item.fileBase });
+    else if (item.matchedForm && item.matchedForm.toLowerCase() !== item.label.toLowerCase()) note = t('suggest.alias', { form: item.matchedForm, file: item.fileBase });
+    el.createSpan({ cls: 'heading-suggestion-note', text: note });
   }
 
   selectSuggestion(item) {
     const ctx = this.context;
     if (!ctx) return;
     const editor = ctx.editor;
-    // 'form' keeps the typed wording as the visible text; 'prefix' uses the heading text.
-    const display = item.kind === 'form' ? ctx.query : item.label;
+    // 'form' keeps the typed wording; 'prefix' uses the matched wording (heading or alias).
+    const display = item.kind === 'form' ? ctx.query : (item.matchedForm || item.label);
     const inTable = inTableCell(editor.getValue(), editor.posToOffset(ctx.start));
     const link = this.plugin.wikiLink(item.linktext, display, inTable);
     editor.replaceRange(link, ctx.start, ctx.end);

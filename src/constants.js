@@ -4,6 +4,7 @@ const DEFAULT_SETTINGS = {
   glossaryMode: 'selected', // 'vault' | 'selected' — where headings are collected from
   glossarySources: '', // file OR folder paths (one per line) whose headings are the terms; used when mode = 'selected'
   excludeSources: '', // file OR folder paths never used as heading sources (even in vault mode)
+  headingAliases: true, // read `%% alias: … %%` comments in glossary files as extra matching forms
   scopeMode: 'vault', // 'folders' | 'vault' — which notes get highlighted/linked
   scopeFolders: '',
   excludeFolders: '',

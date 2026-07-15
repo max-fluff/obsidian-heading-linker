@@ -31,8 +31,8 @@ Two things set Heading Linker apart:
   in bulk, with a preview — and unlink them again. Those links count in the graph
   and backlinks.
 
-What those plugins currently have and this one doesn't: heading **aliases** (extra
-wordings per heading). See "Not yet" below.
+Like them, it supports per-heading **aliases** — but through an inline comment, since
+a heading has no frontmatter of its own (see "Aliases" below).
 
 ## How it works
 
@@ -81,6 +81,22 @@ the command palette (for the active note).
 - **Per note** — add `heading-linker: false` to a note's frontmatter to turn off
   linking in that note, without touching folder settings.
 
+## Aliases
+
+A heading can carry extra wordings — abbreviations or synonyms the stemmer won't
+reach — in an Obsidian comment right under it:
+
+```markdown
+## Central nervous system
+%% alias: CNS, brain and spinal cord %%
+```
+
+Now "CNS" and "brain and spinal cord" also link to that heading. Comments are
+invisible in Reading view, so the note stays clean. Use `alias:` or `aliases:`,
+comma-separated. Reading them costs nothing on a normal rebuild (they're cached and
+only re-read when the file changes); if you run whole-vault sourcing and don't use
+aliases, the **Heading aliases** setting turns the file reads off entirely.
+
 ## Settings worth knowing
 
 - **Match mode** — stemmer (best across forms), a lighter ending strip, or exact.
@@ -110,11 +126,8 @@ The bundle (`main.js`) is built from `src/` by esbuild. The shared helpers in
 
 ## Not yet
 
-- **Heading aliases** — extra wordings for a heading (abbreviations, synonyms). A
-  heading's term is currently its text alone, because Obsidian anchors a link to the
-  full heading, so a `## Term | short` style would break the anchor. A companion
-  syntax for aliases is a later question. (Smart case already covers acronyms, and
-  the stemmer covers word forms, so aliases mainly matter for true synonyms.)
+- **Per-word case-sensitivity modes.** Matching is case-insensitive, except that
+  smart case makes acronym headings case-sensitive automatically.
 
 Headings that contain `|`, `#`, `[`, `]` or `^` are skipped: those characters can't
 sit inside a `[[File#Heading]]` target.
