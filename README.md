@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/banner.svg" alt="Heading Linker — highlight words in any form, link them to headings" width="760">
+</p>
+
 # Heading Linker
 
 Finds words in your notes and turns them into links to matching **headings** inside files you nominate as glossaries — in any word form (declensions, plurals), not just exact spellings. Keep a `Guide.md` with a `## Projectile` heading, and every "projectile", "projectiles" or other form elsewhere gets highlighted and can become `[[Guide#Projectile|projectiles]]`: a real link that opens the file at that heading, with the note's own wording kept as the visible text.
@@ -128,7 +132,7 @@ The es/de/fr stemmers were translated to JavaScript and adapted to this plugin's
 
 The core is written as small CommonJS modules in `src/` and bundled into `main.js` by esbuild. The language modules in `languages/` are bundled in through `src/builtin-languages.js`; adding a language means contributing a module there and rebuilding (see [`languages/README.md`](languages/README.md)). Nothing is loaded or executed at runtime.
 
-Generic code shared with the sibling Glossary Linker and Code Linker plugins lives in `src/shared/`, a git submodule of [obsidian-linker-shared](https://github.com/max-fluff/obsidian-linker-shared). Clone with `--recurse-submodules` so the build can find it:
+Generic code shared with the sibling linker plugins lives in `src/shared/`, a git submodule of [obsidian-linker-shared](https://github.com/max-fluff/obsidian-linker-shared). Clone with `--recurse-submodules` so the build can find it:
 
 ```sh
 git clone --recurse-submodules https://github.com/max-fluff/obsidian-heading-linker
@@ -175,8 +179,28 @@ Nothing below is required, but the plugin cooperates with them if you have them:
 
 ## Related plugins
 
-Also by the author:
+Also by the author — the rest of the linker family. Two of them highlight words already in your notes and link them; two autocomplete a name into a deep-link that lands on the exact spot.
 
-**[Glossary Linker](https://community.obsidian.md/plugins/glossary-linker)** — highlights glossary terms in any word form, turns them into real links, and learns new aliases from links you've already made. Works on desktop and mobile.
+**[Glossary Linker](https://community.obsidian.md/plugins/glossary-linker)** — highlights glossary terms in any word form, turns them into real links, and learns new aliases from links you've already made. This plugin is its file-based counterpart: a heading as a term instead of a whole note. Works on desktop and mobile.
+
+<p align="center">
+  <a href="https://community.obsidian.md/plugins/glossary-linker">
+    <img src="docs/images/glossary-linker-banner.svg" alt="Glossary Linker — highlight terms in any word form, then link them" width="480">
+  </a>
+</p>
 
 **[Code Linker](https://community.obsidian.md/plugins/code-linker)** — autocompletes references to your source code and inserts a deep-link that opens the file at the exact line in your editor (VS Code, JetBrains, …). Desktop-only.
+
+<p align="center">
+  <a href="https://community.obsidian.md/plugins/code-linker">
+    <img src="docs/images/code-linker-banner.svg" alt="Code Linker — autocomplete code references, jump to the exact line" width="480">
+  </a>
+</p>
+
+**[Reference Linker](https://github.com/max-fluff/obsidian-reference-linker)** — autocompletes links to external documents (PDF, Office, images) and inserts a deep-link that opens them at the right page in an external viewer. Desktop-only. Not in the community catalog yet.
+
+<p align="center">
+  <a href="https://github.com/max-fluff/obsidian-reference-linker">
+    <img src="docs/images/reference-linker-banner.svg" alt="Reference Linker — autocomplete document references, jump to the exact page" width="480">
+  </a>
+</p>
