@@ -964,9 +964,9 @@ var require_language_api = __commonJS({
   }
 });
 
-// src/folder-suggest.js
+// src/shared/prose/folder-suggest.js
 var require_folder_suggest = __commonJS({
-  "src/folder-suggest.js"(exports2, module2) {
+  "src/shared/prose/folder-suggest.js"(exports2, module2) {
     "use strict";
     var obsidian = require("obsidian");
     var { AbstractInputSuggest, TFolder: TFolder2 } = obsidian;
@@ -1034,6 +1034,14 @@ var require_folder_suggest = __commonJS({
     };
     var folderSuggestAvailable = () => typeof AbstractInputSuggest === "function";
     module2.exports = { FolderSuggest, FileSuggest, PathSuggest, folderSuggestAvailable };
+  }
+});
+
+// src/folder-suggest.js
+var require_folder_suggest2 = __commonJS({
+  "src/folder-suggest.js"(exports2, module2) {
+    "use strict";
+    module2.exports = require_folder_suggest();
   }
 });
 
@@ -1239,6 +1247,13 @@ var require_discover = __commonJS({
             open: (sourcePath, newTab) => {
               if (typeof peer.open === "function")
                 peer.open(m.target, sourcePath, newTab);
+            },
+            // The peer previews its own target: only it knows whether that means a note, a
+            // heading anchor or something else. A peer too old to publish this simply has no
+            // preview in the list, which is the behaviour it had before the list existed.
+            hover: (event, targetEl, sourcePath, hoverParent) => {
+              if (typeof peer.hover === "function")
+                peer.hover(m.target, event, targetEl, sourcePath, hoverParent);
             }
           });
         }
@@ -1247,6 +1262,39 @@ var require_discover = __commonJS({
     }
     function candidatesFor(candidates, s, e) {
       return candidates.filter((c) => c.start < e && c.end > s);
+    }
+    function peerSuggestions(app, self, query) {
+      const out = [];
+      for (const peer of discoverLinkers(app)) {
+        if (peer.id === self.id || typeof peer.suggest !== "function")
+          continue;
+        let items;
+        try {
+          items = peer.suggest(String(query || "")) || [];
+        } catch (e) {
+          items = [];
+        }
+        for (const it of items) {
+          if (!it || typeof it.label !== "string")
+            continue;
+          out.push({
+            label: it.label,
+            note: it.note || "",
+            target: it.target,
+            // What the inserted link should read. null (or absent) means "keep whatever the
+            // reader typed" — the peer says which, because only it knows whether its candidate
+            // matched an inflection of the typed word or completed a prefix of it.
+            display: it.display == null ? null : it.display,
+            id: peer.id,
+            source: peer.displayName || peer.id,
+            precedence: peer.precedence || 0,
+            // The peer builds its own link text: nobody else should have to know whether a
+            // target is a term title or a File#Heading.
+            insert: (display, inTable) => typeof peer.linkFor === "function" ? peer.linkFor(it.target, display, inTable) : null
+          });
+        }
+      }
+      return out;
     }
     function peersOffering(app, self, kind, text) {
       const out = [];
@@ -1267,7 +1315,7 @@ var require_discover = __commonJS({
     function siblingLinkers(app, self) {
       return discoverLinkers(app).filter((p) => p.id !== self.id);
     }
-    module2.exports = { LINKER_API, discoverLinkers, outranks, foreignRanges, overlaps, ownedMatches, yieldedCandidates, candidatesFor, peersOffering, siblingLinkers };
+    module2.exports = { LINKER_API, discoverLinkers, outranks, foreignRanges, overlaps, ownedMatches, yieldedCandidates, candidatesFor, peerSuggestions, peersOffering, siblingLinkers };
   }
 });
 
@@ -1352,7 +1400,7 @@ var require_settings_tab = __commonJS({
   "src/settings-tab.js"(exports2, module2) {
     "use strict";
     var { PluginSettingTab, Setting, Notice: Notice2 } = require("obsidian");
-    var { PathSuggest, folderSuggestAvailable } = require_folder_suggest();
+    var { PathSuggest, folderSuggestAvailable } = require_folder_suggest2();
     var { sanitizeFolder: sanitizeFolder2 } = require_constants();
     var { renderFolderList } = require_folder_list();
     var { t: t2, plural: plural2 } = require_i18n();
@@ -1630,42 +1678,271 @@ var require_settings_tab = __commonJS({
   }
 });
 
-// src/matcher.js
+// src/shared/prose/matcher.js
 var require_matcher = __commonJS({
+  "src/shared/prose/matcher.js"(exports2, module2) {
+    "use strict";
+    var PROTECT = [
+      /```[\s\S]*?```/g,
+      /~~~[\s\S]*?~~~/g,
+      /`[^`\n]+`/g,
+      /%%[\s\S]*?%%/g,
+      /\[\[[^\]]*\]\]/g,
+      /\[[^\]]*\]\([^)]*\)/g,
+      /(?:https?:\/\/|www\.)\S+/g
+    ];
+    var PROTECT_INLINE = [
+      /`[^`\n]+`/g,
+      /%%[^%\n]*%%/g,
+      /\[\[[^\]]*\]\]/g,
+      /\[[^\]]*\]\([^)]*\)/g,
+      /(?:https?:\/\/|www\.)\S+/g
+    ];
+    var frontmatterEnd = (text) => {
+      if (!/^---\r?\n/.test(text))
+        return -1;
+      const end = text.indexOf("\n---", 3);
+      return end === -1 ? -1 : end + 4;
+    };
+    function inMatch(line, col, re) {
+      let m;
+      while ((m = re.exec(line)) !== null) {
+        if (col > m.index && col < m.index + m[0].length)
+          return true;
+      }
+      return false;
+    }
+    function createMatcher(config) {
+      const { idOf, selfIdOf, fieldsOf } = config;
+      const accepts = config.accepts || (() => true);
+      const caseFits = config.caseFits || (() => true);
+      return {
+        // Keys for a word: the union from every language that claims it (same-script
+        // languages overlap); words no language claims fall back to the exact form.
+        keysFor(word) {
+          const cacheKey = word.toLowerCase();
+          if (!this.keysCache)
+            this.keysCache = /* @__PURE__ */ new Map();
+          const cached = this.keysCache.get(cacheKey);
+          if (cached)
+            return cached;
+          const out = [];
+          const seen = /* @__PURE__ */ new Set();
+          for (const lang of this.activeLanguages) {
+            if (!lang.match(word))
+              continue;
+            for (const k of lang.keys(word, this.settings.matchMode)) {
+              if (!seen.has(k)) {
+                seen.add(k);
+                out.push(k);
+              }
+            }
+          }
+          if (!out.length)
+            out.push(cacheKey);
+          this.keysCache.set(cacheKey, out);
+          return out;
+        },
+        tokenizeForm(form) {
+          const words = [...form.matchAll(/[\p{L}\p{Nd}]+/gu)].map((m) => m[0]);
+          return words.map((raw) => ({ raw, keys: this.keysFor(raw) }));
+        },
+        // Every term id whose form matches `text`, `except` one. Runs the same scan as the
+        // highlighter, so collisions agree with what actually gets linked.
+        termsMatchingText(text, except) {
+          const out = /* @__PURE__ */ new Set();
+          for (const m of this.findMatches(text, null)) {
+            out.add(idOf(m));
+            if (m.alts)
+              for (const a of m.alts)
+                out.add(a);
+          }
+          if (except)
+            out.delete(except);
+          return [...out];
+        },
+        // `selfId` identifies the note being scanned when it is itself a term source; its own
+        // entries are skipped so a note doesn't link to itself.
+        findMatches(text, selfId, opts = {}) {
+          const protect = opts.protect ? this.computeProtected(text) : null;
+          const tokens = [...text.matchAll(/[\p{L}\p{Nd}]+/gu)].map((m) => {
+            const raw = m[0];
+            return { raw, start: m.index, end: m.index + raw.length, keys: this.keysFor(raw) };
+          });
+          const results = [];
+          let i = 0;
+          while (i < tokens.length) {
+            const tk = tokens[i];
+            const cands = [];
+            const seen = /* @__PURE__ */ new Set();
+            for (const k of tk.keys) {
+              const bucket = this.index.byKey.get(k);
+              if (!bucket)
+                continue;
+              for (const c of bucket) {
+                if (!seen.has(c)) {
+                  seen.add(c);
+                  cands.push(c);
+                }
+              }
+            }
+            const fits = (c) => {
+              const wc = c.wordCount;
+              if (i + wc > tokens.length)
+                return false;
+              for (let k = 0; k < wc; k++) {
+                const t2 = tokens[i + k];
+                const w = c.words[k];
+                if (k > 0) {
+                  const between = text.slice(tokens[i + k - 1].end, t2.start);
+                  if (/[^\s-]/.test(between))
+                    return false;
+                }
+                const t2keys = k === 0 ? t2.keys : this.keysFor(t2.raw);
+                if (!t2keys.some((kk) => w.keys.includes(kk)))
+                  return false;
+              }
+              return caseFits(this, c, text.slice(tokens[i].start, tokens[i + wc - 1].end));
+            };
+            let matched = null;
+            let sorted = null;
+            if (cands.length) {
+              sorted = cands.length > 1 ? cands.slice().sort((a, b) => b.wordCount - a.wordCount) : cands;
+              for (const c of sorted) {
+                if (fits(c)) {
+                  matched = { c, start: tokens[i].start, end: tokens[i + c.wordCount - 1].end, wc: c.wordCount };
+                  break;
+                }
+              }
+            }
+            if (matched && selfIdOf(matched.c) !== selfId) {
+              const inProtected = protect && this.overlapsProtected(protect, matched.start, matched.end);
+              if (accepts(this, matched, tk) && !inProtected) {
+                let alts = null;
+                if (sorted.length > 1) {
+                  const seenId = /* @__PURE__ */ new Set([idOf(matched.c)]);
+                  for (const c of sorted) {
+                    if (c.wordCount !== matched.wc || seenId.has(idOf(c)))
+                      continue;
+                    if (fits(c)) {
+                      seenId.add(idOf(c));
+                      (alts || (alts = [])).push(idOf(c));
+                    }
+                  }
+                }
+                results.push(Object.assign({
+                  start: matched.start,
+                  end: matched.end,
+                  display: text.slice(matched.start, matched.end),
+                  alts
+                }, fieldsOf(matched.c)));
+                i += matched.wc;
+                continue;
+              }
+            }
+            i++;
+          }
+          return results;
+        },
+        // Ranges in raw markdown that must not be linked: frontmatter, code, comments, links,
+        // urls and — when the setting asks — headings.
+        computeProtected(text) {
+          const ranges = [];
+          const fm = frontmatterEnd(text);
+          if (fm !== -1)
+            ranges.push([0, fm]);
+          for (const re of PROTECT) {
+            re.lastIndex = 0;
+            let m;
+            while ((m = re.exec(text)) !== null)
+              ranges.push([m.index, m.index + m[0].length]);
+          }
+          if (this.settings.skipHeadings) {
+            const re = /^[ \t]*#{1,6}[ \t].*$/gm;
+            let m;
+            while ((m = re.exec(text)) !== null)
+              ranges.push([m.index, m.index + m[0].length]);
+          }
+          return ranges.sort((a, b) => a[0] - b[0]);
+        },
+        // Frontmatter and code (fenced or inline) — the spans where a [[...]] isn't a real link.
+        // Unlike computeProtected it keeps wikilinks and headings, since unlink acts on links and
+        // a link inside a heading is still real.
+        codeFrontmatterRanges(text) {
+          const ranges = [];
+          const fm = frontmatterEnd(text);
+          if (fm !== -1)
+            ranges.push([0, fm]);
+          for (const re of [/```[\s\S]*?```/g, /~~~[\s\S]*?~~~/g, /`[^`\n]+`/g]) {
+            re.lastIndex = 0;
+            let m;
+            while ((m = re.exec(text)) !== null)
+              ranges.push([m.index, m.index + m[0].length]);
+          }
+          return ranges.sort((a, b) => a[0] - b[0]);
+        },
+        overlapsProtected(ranges, s, e) {
+          for (const [rs, re] of ranges) {
+            if (rs >= e)
+              break;
+            if (re > s)
+              return true;
+          }
+          return false;
+        },
+        // Same spans as computeProtected, but tested at a single position so it stays cheap on
+        // every keystroke — no whole-document scan with greedy [\s\S]*? regexes.
+        isProtectedAt(text, pos) {
+          const fm = frontmatterEnd(text);
+          if (fm !== -1 && pos <= fm)
+            return true;
+          const lines = text.split("\n");
+          let lineStart = 0, lineIdx = 0;
+          for (; lineIdx < lines.length; lineIdx++) {
+            if (pos <= lineStart + lines[lineIdx].length)
+              break;
+            lineStart += lines[lineIdx].length + 1;
+          }
+          let fenced = false;
+          for (let i = 0; i < lineIdx; i++) {
+            const s = lines[i].trimStart();
+            if (s.startsWith("```") || s.startsWith("~~~"))
+              fenced = !fenced;
+          }
+          if (fenced)
+            return true;
+          const line = lines[lineIdx] || "";
+          if (this.settings.skipHeadings && /^[ \t]*#{1,6}[ \t]/.test(line))
+            return true;
+          const col = pos - lineStart;
+          return PROTECT_INLINE.some((re) => {
+            re.lastIndex = 0;
+            return inMatch(line, col, re);
+          });
+        }
+      };
+    }
+    module2.exports = { createMatcher };
+  }
+});
+
+// src/matcher.js
+var require_matcher2 = __commonJS({
   "src/matcher.js"(exports2, module2) {
     "use strict";
     var { splitLines: splitLines2 } = require_markdown();
-    module2.exports = {
-      // Keys for a word: the union from every language that claims it (same-script
-      // languages overlap); words no language claims fall back to the exact form.
-      keysFor(word) {
-        const cacheKey = word.toLowerCase();
-        if (!this.keysCache)
-          this.keysCache = /* @__PURE__ */ new Map();
-        const cached = this.keysCache.get(cacheKey);
-        if (cached)
-          return cached;
-        const out = [];
-        const seen = /* @__PURE__ */ new Set();
-        for (const lang of this.activeLanguages) {
-          if (!lang.match(word))
-            continue;
-          for (const k of lang.keys(word, this.settings.matchMode)) {
-            if (!seen.has(k)) {
-              seen.add(k);
-              out.push(k);
-            }
-          }
-        }
-        if (!out.length)
-          out.push(cacheKey);
-        this.keysCache.set(cacheKey, out);
-        return out;
-      },
-      tokenizeForm(form) {
-        const words = [...form.matchAll(/[\p{L}\p{Nd}]+/gu)].map((m) => m[0]);
-        return words.map((raw) => ({ raw, keys: this.keysFor(raw) }));
-      },
+    var { createMatcher } = require_matcher();
+    var core = createMatcher({
+      // Two different strings here, unlike the glossary: a heading is identified by its full
+      // linktext, but "is this the note's own term?" is a question about the file it lives in.
+      idOf: (c) => c.linktext,
+      selfIdOf: (c) => c.fileBase,
+      fieldsOf: (c) => ({ linktext: c.linktext, label: c.label }),
+      // Smart case: an acronym-like form ("CNS", "TCP/IP") only matches text spelled the same
+      // way, so "cns" in prose is left alone.
+      caseFits: (plugin, c, surface) => !plugin.settings.smartCase || !c.cs || surface === c.caseText
+    });
+    module2.exports = Object.assign({}, core, {
       rebuildIndex() {
         this.keysCache = /* @__PURE__ */ new Map();
         const byKey = /* @__PURE__ */ new Map();
@@ -1718,198 +1995,9 @@ var require_matcher = __commonJS({
         }
         this.index = { byKey, termCount: linktexts.size };
         this.terms = terms;
-      },
-      // Linktexts of every term whose heading matches `text`. Runs the same matcher as
-      // highlighting, so collisions agree with what gets linked.
-      termsMatchingText(text) {
-        const out = /* @__PURE__ */ new Set();
-        for (const m of this.findMatches(text, null)) {
-          out.add(m.linktext);
-          if (m.alts)
-            for (const a of m.alts)
-              out.add(a);
-        }
-        return [...out];
-      },
-      // currentFile: basename of the note being scanned, when it is itself a glossary
-      // file — its own headings are skipped so a glossary file doesn't link to itself.
-      findMatches(text, currentFile, opts = {}) {
-        const protect = opts.protect ? this.computeProtected(text) : null;
-        const smartCase = this.settings.smartCase;
-        const tokens = [...text.matchAll(/[\p{L}\p{Nd}]+/gu)].map((m) => {
-          const raw = m[0];
-          return { raw, start: m.index, end: m.index + raw.length, keys: this.keysFor(raw) };
-        });
-        const results = [];
-        let i = 0;
-        while (i < tokens.length) {
-          const tk = tokens[i];
-          const cands = [];
-          const seen = /* @__PURE__ */ new Set();
-          for (const k of tk.keys) {
-            const bucket = this.index.byKey.get(k);
-            if (!bucket)
-              continue;
-            for (const c of bucket) {
-              if (!seen.has(c)) {
-                seen.add(c);
-                cands.push(c);
-              }
-            }
-          }
-          const fits = (c) => {
-            const wc = c.wordCount;
-            if (i + wc > tokens.length)
-              return false;
-            for (let k = 0; k < wc; k++) {
-              const t2 = tokens[i + k];
-              const w = c.words[k];
-              if (k > 0) {
-                const between = text.slice(tokens[i + k - 1].end, t2.start);
-                if (/[^\s-]/.test(between))
-                  return false;
-              }
-              const t2keys = k === 0 ? t2.keys : this.keysFor(t2.raw);
-              if (!t2keys.some((kk) => w.keys.includes(kk)))
-                return false;
-            }
-            if (smartCase && c.cs && text.slice(tokens[i].start, tokens[i + wc - 1].end) !== c.caseText)
-              return false;
-            return true;
-          };
-          let matched = null;
-          let sorted = null;
-          if (cands.length) {
-            sorted = cands.length > 1 ? cands.slice().sort((a, b) => b.wordCount - a.wordCount) : cands;
-            for (const c of sorted) {
-              if (fits(c)) {
-                matched = { c, start: tokens[i].start, end: tokens[i + c.wordCount - 1].end, wc: c.wordCount };
-                break;
-              }
-            }
-          }
-          if (matched && matched.c.fileBase !== currentFile) {
-            const inProtected = protect && this.overlapsProtected(protect, matched.start, matched.end);
-            if (!inProtected) {
-              let alts = null;
-              if (sorted.length > 1) {
-                const seenLink = /* @__PURE__ */ new Set([matched.c.linktext]);
-                for (const c of sorted) {
-                  if (c.wordCount !== matched.wc || seenLink.has(c.linktext))
-                    continue;
-                  if (fits(c)) {
-                    seenLink.add(c.linktext);
-                    (alts || (alts = [])).push(c.linktext);
-                  }
-                }
-              }
-              results.push({
-                start: matched.start,
-                end: matched.end,
-                linktext: matched.c.linktext,
-                label: matched.c.label,
-                display: text.slice(matched.start, matched.end),
-                alts
-              });
-              i += matched.wc;
-              continue;
-            }
-          }
-          i++;
-        }
-        return results;
-      },
-      // Ranges in raw markdown that must not be linked: frontmatter, code, links, urls, headings.
-      computeProtected(text) {
-        const ranges = [];
-        const push = (re) => {
-          let m;
-          while ((m = re.exec(text)) !== null)
-            ranges.push([m.index, m.index + m[0].length]);
-        };
-        if (/^---\r?\n/.test(text)) {
-          const end = text.indexOf("\n---", 3);
-          if (end !== -1)
-            ranges.push([0, end + 4]);
-        }
-        push(/```[\s\S]*?```/g);
-        push(/~~~[\s\S]*?~~~/g);
-        push(/`[^`\n]+`/g);
-        push(/%%[\s\S]*?%%/g);
-        push(/\[\[[^\]]*\]\]/g);
-        push(/\[[^\]]*\]\([^)]*\)/g);
-        push(/(?:https?:\/\/|www\.)\S+/g);
-        if (this.settings.skipHeadings)
-          push(/^[ \t]*#{1,6}[ \t].*$/gm);
-        return ranges.sort((a, b) => a[0] - b[0]);
-      },
-      // Frontmatter and code (fenced or inline) — the spans where a [[...]] isn't a real link.
-      // Unlike computeProtected it keeps wikilinks and headings, since unlink acts on links and a
-      // link inside a heading is still real.
-      codeFrontmatterRanges(text) {
-        const ranges = [];
-        const push = (re) => {
-          let m;
-          while ((m = re.exec(text)) !== null)
-            ranges.push([m.index, m.index + m[0].length]);
-        };
-        if (/^---\r?\n/.test(text)) {
-          const end = text.indexOf("\n---", 3);
-          if (end !== -1)
-            ranges.push([0, end + 4]);
-        }
-        push(/```[\s\S]*?```/g);
-        push(/~~~[\s\S]*?~~~/g);
-        push(/`[^`\n]+`/g);
-        return ranges.sort((a, b) => a[0] - b[0]);
-      },
-      overlapsProtected(ranges, s, e) {
-        for (const [rs, re] of ranges) {
-          if (rs >= e)
-            break;
-          if (re > s)
-            return true;
-        }
-        return false;
-      },
-      // Same spans as computeProtected, but tested at a single position so it stays
-      // cheap on every keystroke — no whole-document scan with greedy [\s\S]*? regexes.
-      isProtectedAt(text, pos) {
-        if (/^---\r?\n/.test(text)) {
-          const end = text.indexOf("\n---", 3);
-          if (end !== -1 && pos <= end + 4)
-            return true;
-        }
-        const lines = text.split("\n");
-        let lineStart = 0, lineIdx = 0;
-        for (; lineIdx < lines.length; lineIdx++) {
-          if (pos <= lineStart + lines[lineIdx].length)
-            break;
-          lineStart += lines[lineIdx].length + 1;
-        }
-        let fenced = false;
-        for (let i = 0; i < lineIdx; i++) {
-          const s = lines[i].trimStart();
-          if (s.startsWith("```") || s.startsWith("~~~"))
-            fenced = !fenced;
-        }
-        if (fenced)
-          return true;
-        const line = lines[lineIdx] || "";
-        if (this.settings.skipHeadings && /^[ \t]*#{1,6}[ \t]/.test(line))
-          return true;
-        const col = pos - lineStart;
-        return inMatch(line, col, /`[^`\n]+`/g) || inMatch(line, col, /%%[^%\n]*%%/g) || inMatch(line, col, /\[\[[^\]]*\]\]/g) || inMatch(line, col, /\[[^\]]*\]\([^)]*\)/g) || inMatch(line, col, /(?:https?:\/\/|www\.)\S+/g);
+        this.notifyIndexChange();
       }
-    };
-    function inMatch(line, col, re) {
-      let m;
-      while ((m = re.exec(line)) !== null) {
-        if (col > m.index && col < m.index + m[0].length)
-          return true;
-      }
-      return false;
-    }
+    });
     function isAcronymish(label) {
       const letters = [...label].filter((ch) => /\p{L}/u.test(ch));
       if (letters.length < 2)
@@ -1920,275 +2008,347 @@ var require_matcher = __commonJS({
   }
 });
 
-// src/highlight.js
+// src/shared/prose/highlight.js
 var require_highlight = __commonJS({
-  "src/highlight.js"(exports2, module2) {
+  "src/shared/prose/highlight.js"(exports2, module2) {
     "use strict";
     var { t: t2 } = require_i18n();
     var { ownedMatches, yieldedCandidates, candidatesFor, discoverLinkers } = require_discover();
-    module2.exports = {
-      // Our matches minus the ones a higher-ranked sibling linker also claims. With no sibling
-      // installed this is the list itself and costs nothing; with one, a word both know is
-      // drawn once, by the same plugin in both render modes, rather than by whichever ran
-      // first. See shared/discover.js.
-      ownSpans(text, matches) {
-        const provider = this.api && this.api.linker;
-        if (!provider)
-          return matches;
-        return ownedMatches(this.app, provider, text, matches);
-      },
-      // What the linkers that yielded a span to us would have offered there. Empty in a solo
-      // vault, so the caller pays nothing for asking.
-      yieldedIn(text) {
-        const provider = this.api && this.api.linker;
-        if (!provider)
-          return [];
-        return yieldedCandidates(this.app, provider, text);
-      },
-      processReadingMode(el, ctx) {
-        if (!this.settings.highlightInReading)
-          return;
-        const sourcePath = ctx.sourcePath;
-        if (sourcePath && !this.inScope(sourcePath))
-          return;
-        const currentFile = this.currentFileBase(sourcePath);
-        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
-          acceptNode: (node) => {
-            let p = node.parentElement;
-            while (p) {
-              const tag = p.tagName;
-              if (tag === "CODE" || tag === "PRE" || tag === "A")
-                return NodeFilter.FILTER_REJECT;
-              if (this.settings.skipHeadings && /^H[1-6]$/.test(tag))
-                return NodeFilter.FILTER_REJECT;
-              if (p.classList && p.classList.contains("heading-link"))
-                return NodeFilter.FILTER_REJECT;
-              if (p === el)
-                break;
-              p = p.parentElement;
+    function createHighlight(config) {
+      const { cls, displayName, targetOf, selfIdFor } = config;
+      const LINK_CLASS = `${cls}-link`;
+      const AMBIGUOUS_CLASS = `${cls}-ambiguous`;
+      const CM_LINK_CLASS = `cm-${cls}-link`;
+      const CM_AMBIGUOUS_CLASS = `cm-${cls}-ambiguous`;
+      const ATTR_TARGET = `data-${cls}-target`;
+      const ATTR_ALTS = `data-${cls}-alts`;
+      const ATTR_FOREIGN = `data-${cls}-foreign`;
+      return {
+        // Our matches minus the ones a higher-ranked sibling linker also claims. With no sibling
+        // installed this is the list itself and costs nothing; with one, a word both know is
+        // drawn once, by the same plugin in both render modes, rather than by whichever ran
+        // first. See shared/discover.js.
+        ownSpans(text, matches) {
+          const provider = this.api && this.api.linker;
+          if (!provider)
+            return matches;
+          return ownedMatches(this.app, provider, text, matches);
+        },
+        // What the linkers that yielded a span to us would have offered there. Empty in a solo
+        // vault, so the caller pays nothing for asking.
+        yieldedIn(text) {
+          const provider = this.api && this.api.linker;
+          if (!provider)
+            return [];
+          return yieldedCandidates(this.app, provider, text);
+        },
+        processReadingMode(el, ctx) {
+          if (!this.settings.highlightInReading)
+            return;
+          const sourcePath = ctx.sourcePath;
+          if (sourcePath && !this.inScope(sourcePath))
+            return;
+          const selfId = selfIdFor(this, sourcePath);
+          const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+            acceptNode: (node) => {
+              let p = node.parentElement;
+              while (p) {
+                const tag = p.tagName;
+                if (tag === "CODE" || tag === "PRE" || tag === "A")
+                  return NodeFilter.FILTER_REJECT;
+                if (this.settings.skipHeadings && /^H[1-6]$/.test(tag))
+                  return NodeFilter.FILTER_REJECT;
+                if (p.classList && p.classList.contains(LINK_CLASS))
+                  return NodeFilter.FILTER_REJECT;
+                if (p === el)
+                  break;
+                p = p.parentElement;
+              }
+              return NodeFilter.FILTER_ACCEPT;
             }
-            return NodeFilter.FILTER_ACCEPT;
-          }
-        });
-        const nodes = [];
-        while (walker.nextNode())
-          nodes.push(walker.currentNode);
-        for (const node of nodes)
-          this.decorateTextNode(node, currentFile, sourcePath);
-      },
-      decorateTextNode(node, currentFile, sourcePath) {
-        const text = node.textContent;
-        if (!text || text.length < 2)
-          return;
-        const matches = this.ownSpans(text, this.findMatches(text, currentFile, { protect: true }));
-        if (!matches.length)
-          return;
-        const yielded = this.yieldedIn(text);
-        const frag = document.createDocumentFragment();
-        let cursor = 0;
-        for (const m of matches) {
-          if (m.start > cursor)
-            frag.appendChild(document.createTextNode(text.slice(cursor, m.start)));
-          const linktext = m.linktext;
-          const display = m.display;
-          const foreign = candidatesFor(yielded, m.start, m.end);
-          const alts = [...m.alts || [], ...foreign];
-          const a = document.createElement("a");
-          a.textContent = display;
-          a.setAttribute("data-heading-target", linktext);
-          if (alts.length) {
-            a.className = "heading-link heading-ambiguous";
-            const candidates = [linktext, ...alts];
-            const names = candidates.map((c) => typeof c === "object" ? c.label : c);
-            a.setAttribute("aria-label", t2("highlight.matches", { terms: names.join(", ") }));
-            const pick = (e, newTab) => {
-              e.preventDefault();
-              e.stopPropagation();
-              this.chooseTerm(
-                candidates.map((c) => typeof c === "object" ? { ...c, open: () => c.open(sourcePath, newTab) } : c),
-                newTab ? t2("menu.openNewTabTitle") : t2("menu.openTitle"),
-                (c) => this.openTerm(c, sourcePath, newTab)
-              );
-            };
-            a.addEventListener("click", (e) => pick(e, e.ctrlKey || e.metaKey));
-            a.addEventListener("auxclick", (e) => {
-              if (e.button === 1)
-                pick(e, true);
-            });
-            a.addEventListener("mousedown", (e) => {
-              if (e.button === 1) {
+          });
+          const nodes = [];
+          while (walker.nextNode())
+            nodes.push(walker.currentNode);
+          for (const node of nodes)
+            this.decorateTextNode(node, selfId, sourcePath);
+        },
+        decorateTextNode(node, selfId, sourcePath) {
+          const text = node.textContent;
+          if (!text || text.length < 2)
+            return;
+          const matches = this.ownSpans(text, this.findMatches(text, selfId, { protect: true }));
+          if (!matches.length)
+            return;
+          const yielded = this.yieldedIn(text);
+          const frag = document.createDocumentFragment();
+          let cursor = 0;
+          for (const m of matches) {
+            if (m.start > cursor)
+              frag.appendChild(document.createTextNode(text.slice(cursor, m.start)));
+            const target = targetOf(m);
+            const display = m.display;
+            const foreign = candidatesFor(yielded, m.start, m.end);
+            const alts = [...m.alts || [], ...foreign];
+            const a = document.createElement("a");
+            a.textContent = display;
+            a.setAttribute(ATTR_TARGET, target);
+            if (alts.length) {
+              a.className = `${LINK_CLASS} ${AMBIGUOUS_CLASS}`;
+              const candidates = [target, ...alts];
+              const pick = (e, newTab) => {
                 e.preventDefault();
                 e.stopPropagation();
-              }
-            });
-          } else {
-            a.className = "internal-link heading-link";
-            a.href = linktext;
-            a.setAttribute("data-href", linktext);
-          }
-          frag.appendChild(a);
-          cursor = m.end;
-        }
-        if (cursor < text.length)
-          frag.appendChild(document.createTextNode(text.slice(cursor)));
-        node.parentNode.replaceChild(frag, node);
-      },
-      // Editor highlight (Live Preview / Source). Always registered; the
-      // editingHighlight setting controls if and how often it recomputes.
-      registerEditingHighlight() {
-        let view, state, language;
-        try {
-          view = require("@codemirror/view");
-          state = require("@codemirror/state");
-          language = require("@codemirror/language");
-        } catch (e) {
-          console.warn("Heading Linker: CM6 modules unavailable, editor highlight disabled", e);
-          return;
-        }
-        const { ViewPlugin, Decoration } = view;
-        const { RangeSetBuilder, StateEffect } = state;
-        const { syntaxTree } = language;
-        const plugin = this;
-        const refresh = StateEffect.define();
-        this.cmRefreshEffect = refresh;
-        const markCache = /* @__PURE__ */ new Map();
-        const markFor = (linktext) => {
-          let m = markCache.get(linktext);
-          if (!m) {
-            m = Decoration.mark({ class: "cm-heading-link", attributes: { "data-heading-target": linktext } });
-            markCache.set(linktext, m);
-          }
-          return m;
-        };
-        const markWithAlts = (linktext, alts, foreign) => {
-          const names = [linktext, ...alts, ...foreign.map((f) => f.label)];
-          const attributes = {
-            "data-heading-target": linktext,
-            "data-heading-alts": alts.join("\n"),
-            "aria-label": t2("highlight.matches", { terms: names.join(", ") })
-          };
-          if (foreign.length) {
-            attributes["data-heading-foreign"] = JSON.stringify(foreign.map((f) => ({ id: f.id, label: f.label, target: f.target, source: f.source })));
-          }
-          return Decoration.mark({ class: "cm-heading-link cm-heading-ambiguous", attributes });
-        };
-        const skipNode = (name) => /code|link|url|header|hashtag|frontmatter|comment|tag|escape/i.test(name);
-        const buildDeco = (editorView) => {
-          const builder = new RangeSetBuilder();
-          const activeFile = plugin.app.workspace.getActiveFile();
-          if (activeFile && !plugin.inScope(activeFile.path))
-            return builder.finish();
-          const currentFile = activeFile ? plugin.currentFileBase(activeFile.path) : null;
-          const tree = syntaxTree(editorView.state);
-          for (const { from, to } of editorView.visibleRanges) {
-            const text = editorView.state.doc.sliceString(from, to);
-            const yielded = plugin.yieldedIn(text);
-            for (const m of plugin.ownSpans(text, plugin.findMatches(text, currentFile))) {
-              const start = from + m.start;
-              const end = from + m.end;
-              let skip = false;
-              tree.iterate({ from: start, to: end, enter: (n) => {
-                if (skipNode(n.type.name))
-                  skip = true;
-              } });
-              if (skip)
-                continue;
-              const alts = m.alts || [];
-              const foreign = candidatesFor(yielded, m.start, m.end);
-              builder.add(start, end, alts.length || foreign.length ? markWithAlts(m.linktext, alts, foreign) : markFor(m.linktext));
-            }
-          }
-          return builder.finish();
-        };
-        const targetEl = (e) => e.target instanceof HTMLElement ? e.target.closest(".cm-heading-link") : null;
-        const linktextOf = (el) => el.getAttribute("data-heading-target");
-        const altsOf = (el) => {
-          const v = el.getAttribute("data-heading-alts");
-          return v ? v.split("\n") : null;
-        };
-        const foreignOf = (el, sourcePath, newTab) => {
-          const raw = el.getAttribute("data-heading-foreign");
-          if (!raw)
-            return [];
-          let parsed;
-          try {
-            parsed = JSON.parse(raw);
-          } catch (err) {
-            return [];
-          }
-          const peers = discoverLinkers(plugin.app);
-          return parsed.map((f) => ({
-            label: f.label,
-            source: f.source,
-            open: () => {
-              const peer = peers.find((p) => p.id === f.id);
-              if (peer && typeof peer.open === "function")
-                peer.open(f.target, sourcePath, newTab);
-            }
-          }));
-        };
-        const vp = ViewPlugin.fromClass(
-          class {
-            constructor(v) {
-              this.decorations = plugin.settings.editingHighlight === "off" ? Decoration.none : buildDeco(v);
-            }
-            update(u) {
-              const mode = plugin.settings.editingHighlight;
-              if (mode === "off") {
-                if (this.decorations.size)
-                  this.decorations = Decoration.none;
-                return;
-              }
-              const forced = u.transactions.some((tr) => tr.effects.some((e) => e.is(refresh)));
-              if (u.viewportChanged || forced || mode === "live" && (u.docChanged || u.selectionSet)) {
-                this.decorations = buildDeco(u.view);
-              } else if (u.docChanged) {
-                this.decorations = this.decorations.map(u.changes);
-              }
-            }
-          },
-          {
-            decorations: (v) => v.decorations,
-            eventHandlers: {
-              mousedown(e) {
-                const el = targetEl(e);
-                if (!el)
+                this.chooseTerm(
+                  candidates.map((c) => typeof c === "object" ? { ...c, open: () => c.open(sourcePath, newTab) } : c),
+                  newTab ? t2("menu.openNewTabTitle") : t2("menu.openTitle"),
+                  (c) => this.openTerm(c, sourcePath, newTab)
+                );
+              };
+              a.addEventListener("mouseenter", (e) => {
+                if (!this.choices)
                   return;
-                const file = plugin.app.workspace.getActiveFile();
-                const sourcePath = file ? file.path : "";
-                const alts = altsOf(el) || [];
-                const pick = (newTab, title) => {
-                  const candidates = [linktextOf(el), ...alts, ...foreignOf(el, sourcePath, newTab)];
-                  plugin.chooseTerm(candidates, title, (c) => plugin.openTerm(c, sourcePath, newTab));
-                };
+                this.choices.schedule(candidates.map((c) => typeof c === "object" ? {
+                  label: c.label,
+                  open: () => c.open(sourcePath, false),
+                  hover: (ev, row, parent) => c.hover(ev, row, sourcePath, parent)
+                } : c), e.clientX, e.clientY);
+              });
+              a.addEventListener("mouseleave", () => {
+                if (this.choices)
+                  this.choices.leave();
+              });
+              a.addEventListener("click", (e) => pick(e, e.ctrlKey || e.metaKey));
+              a.addEventListener("auxclick", (e) => {
+                if (e.button === 1)
+                  pick(e, true);
+              });
+              a.addEventListener("mousedown", (e) => {
                 if (e.button === 1) {
-                  pick(true, t2("menu.openNewTabTitle"));
                   e.preventDefault();
+                  e.stopPropagation();
+                }
+              });
+            } else {
+              a.className = `internal-link ${LINK_CLASS}`;
+              a.href = target;
+              a.setAttribute("data-href", target);
+            }
+            frag.appendChild(a);
+            cursor = m.end;
+          }
+          if (cursor < text.length)
+            frag.appendChild(document.createTextNode(text.slice(cursor)));
+          node.parentNode.replaceChild(frag, node);
+        },
+        // Editor highlight (Live Preview / Source). Always registered; the
+        // editingHighlight setting controls if and how often it recomputes.
+        registerEditingHighlight() {
+          let view, state, language;
+          try {
+            view = require("@codemirror/view");
+            state = require("@codemirror/state");
+            language = require("@codemirror/language");
+          } catch (e) {
+            console.warn(`${displayName}: CM6 modules unavailable, editor highlight disabled`, e);
+            return;
+          }
+          const { ViewPlugin, Decoration } = view;
+          const { RangeSetBuilder, StateEffect } = state;
+          const { syntaxTree } = language;
+          const plugin = this;
+          const refresh = StateEffect.define();
+          this.cmRefreshEffect = refresh;
+          const markCache = /* @__PURE__ */ new Map();
+          const markFor = (target) => {
+            let m = markCache.get(target);
+            if (!m) {
+              m = Decoration.mark({ class: CM_LINK_CLASS, attributes: { [ATTR_TARGET]: target } });
+              markCache.set(target, m);
+            }
+            return m;
+          };
+          const markWithAlts = (target, alts, foreign) => {
+            const attributes = {
+              [ATTR_TARGET]: target,
+              [ATTR_ALTS]: alts.join("\n")
+            };
+            if (foreign.length) {
+              attributes[ATTR_FOREIGN] = JSON.stringify(foreign.map((f) => ({ id: f.id, label: f.label, target: f.target, source: f.source })));
+            }
+            return Decoration.mark({ class: `${CM_LINK_CLASS} ${CM_AMBIGUOUS_CLASS}`, attributes });
+          };
+          const skipNode = (name) => /code|link|url|header|hashtag|frontmatter|comment|tag|escape/i.test(name);
+          const buildDeco = (editorView) => {
+            const builder = new RangeSetBuilder();
+            const activeFile = plugin.app.workspace.getActiveFile();
+            if (activeFile && !plugin.inScope(activeFile.path))
+              return builder.finish();
+            const selfId = activeFile ? selfIdFor(plugin, activeFile.path) : null;
+            const tree = syntaxTree(editorView.state);
+            for (const { from, to } of editorView.visibleRanges) {
+              const text = editorView.state.doc.sliceString(from, to);
+              const yielded = plugin.yieldedIn(text);
+              for (const m of plugin.ownSpans(text, plugin.findMatches(text, selfId))) {
+                const start = from + m.start;
+                const end = from + m.end;
+                let skip = false;
+                tree.iterate({ from: start, to: end, enter: (n) => {
+                  if (skipNode(n.type.name))
+                    skip = true;
+                } });
+                if (skip)
+                  continue;
+                const alts = m.alts || [];
+                const foreign = candidatesFor(yielded, m.start, m.end);
+                builder.add(start, end, alts.length || foreign.length ? markWithAlts(targetOf(m), alts, foreign) : markFor(targetOf(m)));
+              }
+            }
+            return builder.finish();
+          };
+          const targetEl = (e) => e.target instanceof HTMLElement ? e.target.closest("." + CM_LINK_CLASS) : null;
+          const targetOfEl = (el) => el.getAttribute(ATTR_TARGET);
+          const altsOf = (el) => {
+            const v = el.getAttribute(ATTR_ALTS);
+            return v ? v.split("\n") : null;
+          };
+          const foreignOf = (el, sourcePath, newTab) => {
+            const raw = el.getAttribute(ATTR_FOREIGN);
+            if (!raw)
+              return [];
+            let parsed;
+            try {
+              parsed = JSON.parse(raw);
+            } catch (err) {
+              return [];
+            }
+            const peers = discoverLinkers(plugin.app);
+            return parsed.map((f) => {
+              const peerOf = () => peers.find((p) => p.id === f.id);
+              return {
+                label: f.label,
+                source: f.source,
+                open: () => {
+                  const peer = peerOf();
+                  if (peer && typeof peer.open === "function")
+                    peer.open(f.target, sourcePath, newTab);
+                },
+                hover: (ev, row, parent) => {
+                  const peer = peerOf();
+                  if (peer && typeof peer.hover === "function")
+                    peer.hover(f.target, ev, row, sourcePath, parent);
+                }
+              };
+            });
+          };
+          const candidatesOn = (el, sourcePath) => [targetOfEl(el), ...altsOf(el) || [], ...foreignOf(el, sourcePath, false)];
+          let lastX = 0;
+          let lastY = 0;
+          plugin.registerDomEvent(document, "mousemove", (e) => {
+            lastX = e.clientX;
+            lastY = e.clientY;
+          });
+          plugin.registerDomEvent(document, "keydown", (e) => {
+            if (!plugin.choices || !(e.ctrlKey || e.metaKey))
+              return;
+            const under = document.elementFromPoint(lastX, lastY);
+            const el = under && under.closest ? under.closest("." + CM_LINK_CLASS) : null;
+            if (!el || !(el.hasAttribute(ATTR_ALTS) || el.hasAttribute(ATTR_FOREIGN)))
+              return;
+            const file = plugin.app.workspace.getActiveFile();
+            plugin.choices.schedule(candidatesOn(el, file ? file.path : ""), lastX, lastY);
+          });
+          const vp = ViewPlugin.fromClass(
+            class {
+              constructor(v) {
+                this.decorations = plugin.settings.editingHighlight === "off" ? Decoration.none : buildDeco(v);
+              }
+              update(u) {
+                const mode = plugin.settings.editingHighlight;
+                if (mode === "off") {
+                  if (this.decorations.size)
+                    this.decorations = Decoration.none;
                   return;
                 }
-                if (e.button !== 0 || !(e.ctrlKey || e.metaKey))
-                  return;
-                pick(false, t2("menu.openTitle"));
-                e.preventDefault();
-              },
-              mouseover(e) {
-                const el = targetEl(e);
-                if (!el)
-                  return;
-                if (el.hasAttribute("data-heading-alts") || el.hasAttribute("data-heading-foreign"))
-                  return;
-                const file = plugin.app.workspace.getActiveFile();
-                plugin.hoverTerm(e, el, linktextOf(el), file ? file.path : "");
+                const forced = u.transactions.some((tr) => tr.effects.some((e) => e.is(refresh)));
+                if (u.viewportChanged || forced || mode === "live" && (u.docChanged || u.selectionSet)) {
+                  this.decorations = buildDeco(u.view);
+                } else if (u.docChanged) {
+                  this.decorations = this.decorations.map(u.changes);
+                }
               }
-              // No handler for contextmenu: a right-click in the editor already raises Obsidian's
-              // own menu, and everything we offer for the word under the cursor is added there.
-              // One menu, whichever half of the toggle applies.
+            },
+            {
+              decorations: (v) => v.decorations,
+              eventHandlers: {
+                mousedown(e) {
+                  const el = targetEl(e);
+                  if (!el)
+                    return;
+                  const file = plugin.app.workspace.getActiveFile();
+                  const sourcePath = file ? file.path : "";
+                  const alts = altsOf(el) || [];
+                  const pick = (newTab, title) => {
+                    const candidates = [targetOfEl(el), ...alts, ...foreignOf(el, sourcePath, newTab)];
+                    plugin.chooseTerm(candidates, title, (c) => plugin.openTerm(c, sourcePath, newTab));
+                  };
+                  if (e.button === 1) {
+                    pick(true, t2("menu.openNewTabTitle"));
+                    e.preventDefault();
+                    return;
+                  }
+                  if (e.button !== 0 || !(e.ctrlKey || e.metaKey))
+                    return;
+                  pick(false, t2("menu.openTitle"));
+                  e.preventDefault();
+                },
+                mouseover(e) {
+                  const el = targetEl(e);
+                  if (!el)
+                    return;
+                  const file = plugin.app.workspace.getActiveFile();
+                  const sourcePath = file ? file.path : "";
+                  if (el.hasAttribute(ATTR_ALTS) || el.hasAttribute(ATTR_FOREIGN)) {
+                    if (!plugin.choices || !(e.ctrlKey || e.metaKey))
+                      return;
+                    plugin.choices.schedule(candidatesOn(el, sourcePath), e.clientX, e.clientY);
+                    return;
+                  }
+                  plugin.hoverTerm(e, el, targetOfEl(el), sourcePath);
+                },
+                mouseout(e) {
+                  if (targetEl(e) && plugin.choices)
+                    plugin.choices.leave();
+                }
+                // No handler for contextmenu: a right-click in the editor already raises Obsidian's
+                // own menu, and everything we offer for the word under the cursor is added there.
+                // One menu, whichever half of the toggle applies.
+              }
             }
-          }
-        );
-        this.registerEditorExtension(vp);
-      }
-    };
+          );
+          this.registerEditorExtension(vp);
+        }
+      };
+    }
+    module2.exports = { createHighlight };
+  }
+});
+
+// src/highlight.js
+var require_highlight2 = __commonJS({
+  "src/highlight.js"(exports2, module2) {
+    "use strict";
+    var { createHighlight } = require_highlight();
+    module2.exports = createHighlight({
+      // A global namespace: `heading-link`, `cm-heading-link`, `data-heading-target`.
+      cls: "heading",
+      displayName: "Heading Linker",
+      // What a heading match links to: "Basename#Heading".
+      targetOf: (m) => m.linktext,
+      // A note's own headings are not offered inside it, so the matcher needs to know which
+      // file it is reading.
+      selfIdFor: (plugin, sourcePath) => plugin.currentFileBase(sourcePath)
+    });
   }
 });
 
@@ -2692,11 +2852,163 @@ var require_materialize = __commonJS({
   }
 });
 
+// src/shared/prose/suggest.js
+var require_suggest = __commonJS({
+  "src/shared/prose/suggest.js"(exports2, module2) {
+    "use strict";
+    var { peerSuggestions } = require_discover();
+    function mergeSuggestions(plugin, query, own, limit = 8) {
+      const provider = plugin.api && plugin.api.linker;
+      if (!provider)
+        return own;
+      const foreign = peerSuggestions(plugin.app, provider, query);
+      if (!foreign.length)
+        return own;
+      const mine = provider.precedence || 0;
+      const above = foreign.filter((f) => f.precedence > mine);
+      const below = foreign.filter((f) => f.precedence <= mine);
+      return [...above, ...own, ...below].slice(0, limit);
+    }
+    module2.exports = { mergeSuggestions };
+  }
+});
+
+// src/heading-suggest.js
+var require_heading_suggest = __commonJS({
+  "src/heading-suggest.js"(exports2, module2) {
+    "use strict";
+    var { EditorSuggest } = require("obsidian");
+    var { t: t2 } = require_i18n();
+    var { inTableCell: inTableCell2 } = require_markdown();
+    var { mergeSuggestions } = require_suggest();
+    function collectSuggestions(plugin, query, ownFile) {
+      const qLower = query.toLowerCase();
+      const byLink = /* @__PURE__ */ new Map();
+      const seenCand = /* @__PURE__ */ new Set();
+      for (const key of plugin.keysFor(query)) {
+        const bucket = plugin.index.byKey.get(key);
+        if (!bucket)
+          continue;
+        for (const c of bucket) {
+          if (c.wordCount !== 1 || seenCand.has(c) || c.fileBase === ownFile)
+            continue;
+          seenCand.add(c);
+          if (!byLink.has(c.linktext))
+            byLink.set(c.linktext, { linktext: c.linktext, label: c.label, fileBase: c.fileBase, kind: "form" });
+        }
+      }
+      for (const term of plugin.terms || []) {
+        if (byLink.has(term.linktext) || term.fileBase === ownFile)
+          continue;
+        let form = null;
+        if (term.label.toLowerCase().startsWith(qLower))
+          form = term.label;
+        else if (term.aliases)
+          form = term.aliases.find((a) => a.toLowerCase().startsWith(qLower));
+        if (form)
+          byLink.set(term.linktext, { linktext: term.linktext, label: term.label, fileBase: term.fileBase, kind: "prefix", matchedForm: form });
+      }
+      const items = [...byLink.values()];
+      const rank = (it) => it.kind === "form" ? 0 : 1;
+      items.sort((a, b) => rank(a) - rank(b) || a.label.length - b.label.length || a.linktext.localeCompare(b.linktext));
+      return items.slice(0, 8);
+    }
+    function noteFor(item) {
+      if (item.kind === "form")
+        return t2("suggest.inflection", { file: item.fileBase });
+      if (item.matchedForm && item.matchedForm.toLowerCase() !== item.label.toLowerCase()) {
+        return t2("suggest.alias", { form: item.matchedForm, file: item.fileBase });
+      }
+      return item.fileBase;
+    }
+    function suggestionsFor(plugin, query) {
+      const active = plugin.app.workspace.getActiveFile();
+      const own = active ? plugin.currentFileBase(active.path) : null;
+      return collectSuggestions(plugin, query, own).map((it) => ({
+        label: it.label,
+        note: noteFor(it),
+        target: it.linktext,
+        display: it.kind === "form" ? null : it.matchedForm || it.label
+      }));
+    }
+    var HeadingSuggest2 = class extends EditorSuggest {
+      constructor(app, plugin) {
+        super(app);
+        this.plugin = plugin;
+      }
+      onTrigger(cursor, editor, file) {
+        const plugin = this.plugin;
+        if (!plugin.settings.linkSuggest)
+          return null;
+        if (!file || !plugin.inScope(file.path))
+          return null;
+        const line = editor.getLine(cursor.line);
+        if (/[\p{L}\p{Nd}]/u.test(line[cursor.ch] || ""))
+          return null;
+        const m = line.slice(0, cursor.ch).match(/[\p{L}\p{Nd}]+$/u);
+        if (!m)
+          return null;
+        const query = m[0];
+        if (query.length < Math.max(1, plugin.settings.suggestMinChars || 1))
+          return null;
+        const before = line[cursor.ch - query.length - 1] || "";
+        if (before && (plugin.settings.suggestSkipAfter || "").includes(before))
+          return null;
+        const off = editor.posToOffset(cursor);
+        if (plugin.isProtectedAt(editor.getValue(), off))
+          return null;
+        const items = this.merged(query);
+        if (!items.length)
+          return null;
+        this.cached = { query, items };
+        return { start: { line: cursor.line, ch: cursor.ch - query.length }, end: cursor, query };
+      }
+      // Our candidates plus every sibling linker's, in one list. See shared/prose/suggest.js.
+      merged(query) {
+        return mergeSuggestions(this.plugin, query, collectSuggestions(this.plugin, query, this.ownFileBase()));
+      }
+      // The note being typed in, when it is itself a heading source — its own headings are
+      // never offered, the same exclusion the highlighter makes.
+      ownFileBase() {
+        const active = this.plugin.app.workspace.getActiveFile();
+        return active ? this.plugin.currentFileBase(active.path) : null;
+      }
+      getSuggestions(context) {
+        if (this.cached && this.cached.query === context.query)
+          return this.cached.items;
+        return this.merged(context.query);
+      }
+      renderSuggestion(item, el) {
+        el.addClass("heading-suggestion");
+        el.createSpan({ cls: "heading-suggestion-title", text: item.label });
+        const note = item.insert ? item.note : noteFor(item);
+        if (note)
+          el.createSpan({ cls: "heading-suggestion-note", text: note });
+      }
+      selectSuggestion(item) {
+        const ctx = this.context;
+        if (!ctx)
+          return;
+        const editor = ctx.editor;
+        const inTable = inTableCell2(editor.getValue(), editor.posToOffset(ctx.start));
+        const link = item.insert ? item.insert(item.display == null ? ctx.query : item.display, inTable) : this.plugin.wikiLink(item.linktext, item.kind === "form" ? ctx.query : item.matchedForm || item.label, inTable);
+        if (!link)
+          return;
+        editor.replaceRange(link, ctx.start, ctx.end);
+        editor.setCursor(editor.offsetToPos(editor.posToOffset(ctx.start) + link.length));
+      }
+    };
+    var suggestAvailable2 = () => typeof EditorSuggest === "function";
+    module2.exports = { HeadingSuggest: HeadingSuggest2, suggestAvailable: suggestAvailable2, collectSuggestions, suggestionsFor };
+  }
+});
+
 // src/api.js
 var require_api = __commonJS({
   "src/api.js"(exports2, module2) {
     "use strict";
     var { LINKER_API } = require_discover();
+    var { suggestionsFor } = require_heading_suggest();
     module2.exports = {
       buildApi() {
         const plugin = this;
@@ -2734,6 +3046,15 @@ var require_api = __commonJS({
             // Open one of our targets. Ours to resolve — nobody else should have to know that a
             // heading link is a File#Heading.
             open: (target, sourcePath, newTab) => plugin.openTerm(target, sourcePath, newTab),
+            // Show our own preview of one of our targets, anchored to someone else's element.
+            // Used by the duplicate list, which lists candidates from every linker but must let
+            // each one preview its own.
+            hover: (target, event, targetEl, sourcePath, hoverParent) => plugin.hoverTerm(event, targetEl, target, sourcePath, hoverParent),
+            // What we would autocomplete for a typed word, for the linker that owns the popup.
+            // The note is the line the reader sees under the name, already localised by us.
+            suggest: (query) => suggestionsFor(plugin, String(query || "")),
+            // Our link text for a target. The popup's owner writes it but never composes it.
+            linkFor: (target, display, inTable) => plugin.wikiLink(target, display, inTable),
             // Redraw after the other side changes who ranks higher, so the setting takes effect
             // in both plugins at once instead of at the next rebuild.
             refresh: () => plugin.rerenderViews()
@@ -2774,115 +3095,6 @@ var require_api = __commonJS({
         }
       }
     };
-  }
-});
-
-// src/heading-suggest.js
-var require_heading_suggest = __commonJS({
-  "src/heading-suggest.js"(exports2, module2) {
-    "use strict";
-    var { EditorSuggest } = require("obsidian");
-    var { t: t2 } = require_i18n();
-    var { inTableCell: inTableCell2 } = require_markdown();
-    function collectSuggestions(plugin, query, ownFile) {
-      const qLower = query.toLowerCase();
-      const byLink = /* @__PURE__ */ new Map();
-      const seenCand = /* @__PURE__ */ new Set();
-      for (const key of plugin.keysFor(query)) {
-        const bucket = plugin.index.byKey.get(key);
-        if (!bucket)
-          continue;
-        for (const c of bucket) {
-          if (c.wordCount !== 1 || seenCand.has(c) || c.fileBase === ownFile)
-            continue;
-          seenCand.add(c);
-          if (!byLink.has(c.linktext))
-            byLink.set(c.linktext, { linktext: c.linktext, label: c.label, fileBase: c.fileBase, kind: "form" });
-        }
-      }
-      for (const term of plugin.terms || []) {
-        if (byLink.has(term.linktext) || term.fileBase === ownFile)
-          continue;
-        let form = null;
-        if (term.label.toLowerCase().startsWith(qLower))
-          form = term.label;
-        else if (term.aliases)
-          form = term.aliases.find((a) => a.toLowerCase().startsWith(qLower));
-        if (form)
-          byLink.set(term.linktext, { linktext: term.linktext, label: term.label, fileBase: term.fileBase, kind: "prefix", matchedForm: form });
-      }
-      const items = [...byLink.values()];
-      const rank = (it) => it.kind === "form" ? 0 : 1;
-      items.sort((a, b) => rank(a) - rank(b) || a.label.length - b.label.length || a.linktext.localeCompare(b.linktext));
-      return items.slice(0, 8);
-    }
-    var HeadingSuggest2 = class extends EditorSuggest {
-      constructor(app, plugin) {
-        super(app);
-        this.plugin = plugin;
-      }
-      onTrigger(cursor, editor, file) {
-        const plugin = this.plugin;
-        if (!plugin.settings.linkSuggest)
-          return null;
-        if (!file || !plugin.inScope(file.path))
-          return null;
-        const line = editor.getLine(cursor.line);
-        if (/[\p{L}\p{Nd}]/u.test(line[cursor.ch] || ""))
-          return null;
-        const m = line.slice(0, cursor.ch).match(/[\p{L}\p{Nd}]+$/u);
-        if (!m)
-          return null;
-        const query = m[0];
-        if (query.length < Math.max(1, plugin.settings.suggestMinChars || 1))
-          return null;
-        const before = line[cursor.ch - query.length - 1] || "";
-        if (before && (plugin.settings.suggestSkipAfter || "").includes(before))
-          return null;
-        const off = editor.posToOffset(cursor);
-        if (plugin.isProtectedAt(editor.getValue(), off))
-          return null;
-        const items = collectSuggestions(plugin, query, this.ownFileBase());
-        if (!items.length)
-          return null;
-        this.cached = { query, items };
-        return { start: { line: cursor.line, ch: cursor.ch - query.length }, end: cursor, query };
-      }
-      // The note being typed in, when it is itself a heading source — its own headings are
-      // never offered, the same exclusion the highlighter makes.
-      ownFileBase() {
-        const active = this.plugin.app.workspace.getActiveFile();
-        return active ? this.plugin.currentFileBase(active.path) : null;
-      }
-      getSuggestions(context) {
-        if (this.cached && this.cached.query === context.query)
-          return this.cached.items;
-        return collectSuggestions(this.plugin, context.query, this.ownFileBase());
-      }
-      renderSuggestion(item, el) {
-        el.addClass("heading-suggestion");
-        el.createSpan({ cls: "heading-suggestion-title", text: item.label });
-        let note = item.fileBase;
-        if (item.kind === "form")
-          note = t2("suggest.inflection", { file: item.fileBase });
-        else if (item.matchedForm && item.matchedForm.toLowerCase() !== item.label.toLowerCase())
-          note = t2("suggest.alias", { form: item.matchedForm, file: item.fileBase });
-        el.createSpan({ cls: "heading-suggestion-note", text: note });
-      }
-      selectSuggestion(item) {
-        const ctx = this.context;
-        if (!ctx)
-          return;
-        const editor = ctx.editor;
-        const display = item.kind === "form" ? ctx.query : item.matchedForm || item.label;
-        const inTable = inTableCell2(editor.getValue(), editor.posToOffset(ctx.start));
-        const link = this.plugin.wikiLink(item.linktext, display, inTable);
-        editor.replaceRange(link, ctx.start, ctx.end);
-        editor.setCursor(editor.offsetToPos(editor.posToOffset(ctx.start) + link.length));
-      }
-    };
-    var suggestAvailable2 = () => typeof EditorSuggest === "function";
-    module2.exports = { HeadingSuggest: HeadingSuggest2, suggestAvailable: suggestAvailable2, collectSuggestions };
   }
 });
 
@@ -3109,6 +3321,231 @@ var require_aliases = __commonJS({
   }
 });
 
+// src/shared/popover.js
+var require_popover = __commonJS({
+  "src/shared/popover.js"(exports2, module2) {
+    "use strict";
+    var SHOW_DELAY = 200;
+    var HIDE_GRACE = 250;
+    var EDGE_PAD = 12;
+    var Popover = class {
+      // `cls` is the plugin's own class on the root element; `hiddenCls` defaults to `${cls}`
+      // with a -hidden suffix on the plugin's prefix, but both can be passed explicitly.
+      constructor(opts) {
+        this.cls = opts.cls;
+        this.hiddenCls = opts.hiddenCls;
+        this.showDelay = opts.showDelay == null ? SHOW_DELAY : opts.showDelay;
+        this.hideGrace = opts.hideGrace == null ? HIDE_GRACE : opts.hideGrace;
+        this.onHide = opts.onHide || null;
+        this.onDestroy = opts.onDestroy || null;
+        this.keepAlive = opts.keepAlive || null;
+        this.el = null;
+        this.timer = null;
+        this.hideTimer = null;
+        this.key = "";
+        this.pendingKey = "";
+        this.token = 0;
+      }
+      ensureEl() {
+        if (!this.el) {
+          this.el = document.body.createDiv({ cls: `${this.cls} ${this.hiddenCls}` });
+          this.el.addEventListener("mouseenter", () => this.cancelHide());
+          this.el.addEventListener("mouseleave", () => this.leave());
+        }
+        return this.el;
+      }
+      isVisible() {
+        return !!this.el && !this.el.classList.contains(this.hiddenCls);
+      }
+      contains(node) {
+        return !!this.el && !!node && this.el.contains(node);
+      }
+      cancelHide() {
+        clearTimeout(this.hideTimer);
+        this.hideTimer = null;
+      }
+      // Ask for `key` to be shown after the delay. Re-asking for what is already up, or already
+      // on its way, changes nothing — otherwise every mouse move would restart the timer.
+      schedule(key, x, y, build) {
+        this.cancelHide();
+        if (key === this.key && this.isVisible())
+          return;
+        if (key === this.pendingKey)
+          return;
+        this.pendingKey = key;
+        clearTimeout(this.timer);
+        this.timer = setTimeout(() => {
+          this.pendingKey = "";
+          this.show(key, x, y, build);
+        }, this.showDelay);
+      }
+      leave() {
+        if (this.hideTimer)
+          return;
+        this.hideTimer = setTimeout(() => {
+          this.hideTimer = null;
+          if (this.keepAlive && this.keepAlive()) {
+            this.leave();
+            return;
+          }
+          this.hide();
+        }, this.hideGrace);
+      }
+      async show(key, x, y, build) {
+        const token = ++this.token;
+        const ctx = { isCurrent: () => token === this.token };
+        const el = this.ensureEl();
+        el.empty();
+        const after = await build(el, ctx);
+        if (after === false || !ctx.isCurrent())
+          return;
+        this.key = key;
+        el.style.visibility = "hidden";
+        el.style.left = "-9999px";
+        el.style.top = "0px";
+        el.removeClass(this.hiddenCls);
+        if (typeof after === "function")
+          after();
+        const r = el.getBoundingClientRect();
+        let left = x + EDGE_PAD;
+        let top = y + EDGE_PAD;
+        if (left + r.width > window.innerWidth - EDGE_PAD)
+          left = Math.max(EDGE_PAD, x - EDGE_PAD - r.width);
+        if (top + r.height > window.innerHeight - EDGE_PAD)
+          top = Math.max(EDGE_PAD, y - EDGE_PAD - r.height);
+        el.style.left = left + "px";
+        el.style.top = top + "px";
+        el.style.visibility = "visible";
+      }
+      hide() {
+        clearTimeout(this.timer);
+        clearTimeout(this.hideTimer);
+        this.hideTimer = null;
+        this.pendingKey = "";
+        this.key = "";
+        this.token++;
+        if (this.onHide)
+          this.onHide();
+        if (this.el) {
+          this.el.addClass(this.hiddenCls);
+          this.el.empty();
+        }
+      }
+      destroy() {
+        clearTimeout(this.timer);
+        clearTimeout(this.hideTimer);
+        this.token++;
+        if (this.onDestroy)
+          this.onDestroy();
+        if (this.el) {
+          this.el.remove();
+          this.el = null;
+        }
+      }
+    };
+    module2.exports = { Popover, SHOW_DELAY, HIDE_GRACE };
+  }
+});
+
+// src/shared/prose/choices.js
+var require_choices = __commonJS({
+  "src/shared/prose/choices.js"(exports2, module2) {
+    "use strict";
+    var { Popover } = require_popover();
+    var { Component } = require("obsidian");
+    var labelOf = (c) => typeof c === "object" && c ? c.label : c;
+    var ChoicePopover2 = class {
+      // `cls` is the plugin's own class prefix. `hover(target, event, el, hoverParent)` asks for
+      // our own native preview of one of our targets; `open(target)` follows it.
+      constructor(opts) {
+        this.opts = opts;
+        this.component = null;
+        this.pop = new Popover({
+          cls: `${opts.cls}-choices`,
+          hiddenCls: `${opts.cls}-hidden`,
+          onHide: () => this.unloadComponent(),
+          onDestroy: () => this.unloadComponent(),
+          // The preview a row opens is Obsidian's own element in the body, not a child of ours,
+          // so moving the pointer into it reads as leaving the list. Staying up while the reader
+          // is inside that preview is the difference between a list you can use and one that
+          // vanishes the moment you try.
+          keepAlive: () => !!document.querySelector(".hover-popover:hover")
+        });
+      }
+      isVisible() {
+        return this.pop.isVisible();
+      }
+      contains(node) {
+        return this.pop.contains(node);
+      }
+      cancelHide() {
+        this.pop.cancelHide();
+      }
+      leave() {
+        this.pop.leave();
+      }
+      hide() {
+        this.pop.hide();
+      }
+      destroy() {
+        this.pop.destroy();
+      }
+      // The component the native previews hang off. Unloading it closes any preview still open,
+      // so the list going away takes its children with it rather than leaving them orphaned.
+      unloadComponent() {
+        if (this.component) {
+          this.component.unload();
+          this.component = null;
+        }
+      }
+      schedule(candidates, x, y) {
+        if (!candidates || candidates.length < 2)
+          return;
+        const key = candidates.map(labelOf).join("\0");
+        this.pop.schedule(key, x, y, (el) => this.build(candidates, el));
+      }
+      // A fresh component per preview, so opening one closes the last. They are all anchored to
+      // rows in the same list, and without this every row the pointer crossed would leave its
+      // own preview on screen until the list closed — a stack of them, one per row visited.
+      newComponent() {
+        this.unloadComponent();
+        this.component = new Component();
+        this.component.load();
+        return this.component;
+      }
+      build(candidates, el) {
+        this.unloadComponent();
+        const cls = this.opts.cls;
+        el.createDiv({ cls: `${cls}-choices-title`, text: this.opts.title });
+        const list = el.createDiv({ cls: `${cls}-choices-list` });
+        for (const c of candidates) {
+          const foreign = typeof c === "object" && c !== null;
+          const row = list.createDiv({ cls: `${cls}-choices-item`, text: labelOf(c) });
+          row.addEventListener("mouseenter", (event) => {
+            const parent = this.newComponent();
+            if (foreign) {
+              if (typeof c.hover === "function")
+                c.hover(event, row, parent);
+            } else {
+              this.opts.hover(c, event, row, parent);
+            }
+          });
+          row.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            this.hide();
+            if (foreign)
+              c.open();
+            else
+              this.opts.open(c);
+          });
+        }
+      }
+    };
+    module2.exports = { ChoicePopover: ChoicePopover2 };
+  }
+});
+
 // src/locales/en.js
 var require_en2 = __commonJS({
   "src/locales/en.js"(exports2, module2) {
@@ -3172,10 +3609,6 @@ var require_en2 = __commonJS({
       "exclude.addPrefixed": 'Heading: add "{value}" to {noun}',
       "exclude.remove": 'Remove "{value}" from {noun}',
       "exclude.removePrefixed": 'Heading: remove "{value}" from {noun}',
-      // Highlight tooltip
-      // Neutral on purpose: a duplicate can come from this plugin or from a sibling, and the
-      // reader is picking a destination, not a plugin.
-      "highlight.matches": "Several matches: {terms}",
       // Modals
       "modal.materialize.title": "Turn words into heading links",
       "modal.materialize.summary": "Reviewing {files} file(s), {replacements} replacement(s).",
@@ -3227,8 +3660,11 @@ var require_en2 = __commonJS({
       "notice.ignoreAdded": 'Ignoring "{entry}" as a heading source.',
       "notice.ignoreRemoved": 'No longer ignoring "{entry}".',
       // Autocomplete
-      "suggest.inflection": "form of a heading in {file}",
-      "suggest.alias": "alias \u201C{form}\u201D \xB7 {file}",
+      // The line under a name in the autocomplete popup. Kept to a fragment, not a sentence:
+      // it sits under the heading it describes, and the glossary linker's candidates share the
+      // same popup, so the two have to read as one list.
+      "suggest.inflection": "word form \xB7 {file}",
+      "suggest.alias": "as \u201C{form}\u201D \xB7 {file}",
       // Settings — sources
       "set.heading.sources": "Heading sources",
       "set.glossaryMode.name": "Collect headings from",
@@ -3330,8 +3766,8 @@ var require_en2 = __commonJS({
       "plural.file": { one: "{n} file", other: "{n} files" },
       "plural.link": { one: "{n} link", other: "{n} links" },
       "set.precedence.name": "Priority among linker plugins",
-      "set.precedence.desc": "When two linkers claim the same word or the same link, the one higher in this list wins and the other steps aside. Only this plugin\u2019s own position can be moved from here \u2014 move the others from their own settings.",
-      "set.precedence.other": "Move from that plugin\u2019s own settings",
+      "set.precedence.desc": "A word or link several linkers claim goes to the one highest in this list. You can only move this plugin \u2014 move the others from their own settings.",
+      "set.precedence.other": "Moved from its own settings",
       "set.precedence.up": "Move up",
       "set.precedence.down": "Move down"
     };
@@ -3389,7 +3825,6 @@ var require_ru2 = __commonJS({
       "exclude.addPrefixed": "Heading: \u0434\u043E\u0431\u0430\u0432\u0438\u0442\u044C \xAB{value}\xBB \u0432 {noun}",
       "exclude.remove": "\u0423\u0431\u0440\u0430\u0442\u044C \xAB{value}\xBB \u0438\u0437 {noun}",
       "exclude.removePrefixed": "Heading: \u0443\u0431\u0440\u0430\u0442\u044C \xAB{value}\xBB \u0438\u0437 {noun}",
-      "highlight.matches": "\u041D\u0435\u0441\u043A\u043E\u043B\u044C\u043A\u043E \u0441\u043E\u0432\u043F\u0430\u0434\u0435\u043D\u0438\u0439: {terms}",
       "modal.materialize.title": "\u041F\u0440\u0435\u0432\u0440\u0430\u0442\u0438\u0442\u044C \u0441\u043B\u043E\u0432\u0430 \u0432 \u0441\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438",
       "modal.materialize.summary": "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430: \u0444\u0430\u0439\u043B\u043E\u0432 \u2014 {files}, \u0437\u0430\u043C\u0435\u043D \u2014 {replacements}.",
       "modal.materialize.ambiguous": "{n} \u0441\u043B\u043E\u0432(\u043E) \u0441\u043E\u0432\u043F\u0430\u0434\u0430\u0435\u0442 \u0441 \u043D\u0435\u0441\u043A\u043E\u043B\u044C\u043A\u0438\u043C\u0438 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0430\u043C\u0438 \u2014 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0438\u043B\u0438 \u043F\u0440\u043E\u043F\u0443\u0441\u0442\u0438\u0442\u0435:",
@@ -3436,8 +3871,8 @@ var require_ru2 = __commonJS({
       "notice.sourceRemoved": "\xAB{entry}\xBB \u0443\u0431\u0440\u0430\u043D\u043E \u0438\u0437 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u043E\u0432 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u0432.",
       "notice.ignoreAdded": "\xAB{entry}\xBB \u0438\u0433\u043D\u043E\u0440\u0438\u0440\u0443\u0435\u0442\u0441\u044F \u043A\u0430\u043A \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A.",
       "notice.ignoreRemoved": "\xAB{entry}\xBB \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435 \u0438\u0433\u043D\u043E\u0440\u0438\u0440\u0443\u0435\u0442\u0441\u044F.",
-      "suggest.inflection": "\u0444\u043E\u0440\u043C\u0430 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0430 \u0438\u0437 {file}",
-      "suggest.alias": "\u0430\u043B\u0438\u0430\u0441 \xAB{form}\xBB \xB7 {file}",
+      "suggest.inflection": "\u0441\u043B\u043E\u0432\u043E\u0444\u043E\u0440\u043C\u0430 \xB7 {file}",
+      "suggest.alias": "\u043A\u0430\u043A \xAB{form}\xBB \xB7 {file}",
       "set.heading.sources": "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u0432",
       "set.glossaryMode.name": "\u041E\u0442\u043A\u0443\u0434\u0430 \u0431\u0440\u0430\u0442\u044C \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438",
       "set.glossaryMode.desc": "\u041A\u0430\u043A\u0438\u0435 \u0437\u0430\u043C\u0435\u0442\u043A\u0438 \u043E\u0442\u0434\u0430\u044E\u0442 \u0441\u0432\u043E\u0438 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438 \u043A\u0430\u043A \u0442\u0435\u0440\u043C\u0438\u043D\u044B \u0434\u043B\u044F \u0441\u0441\u044B\u043B\u043E\u043A.",
@@ -3531,8 +3966,8 @@ var require_ru2 = __commonJS({
       "plural.file": { one: "{n} \u0444\u0430\u0439\u043B", few: "{n} \u0444\u0430\u0439\u043B\u0430", many: "{n} \u0444\u0430\u0439\u043B\u043E\u0432", other: "{n} \u0444\u0430\u0439\u043B\u0430" },
       "plural.link": { one: "{n} \u0441\u0441\u044B\u043B\u043A\u0430", few: "{n} \u0441\u0441\u044B\u043B\u043A\u0438", many: "{n} \u0441\u0441\u044B\u043B\u043E\u043A", other: "{n} \u0441\u0441\u044B\u043B\u043A\u0438" },
       "set.precedence.name": "\u041F\u0440\u0438\u043E\u0440\u0438\u0442\u0435\u0442 \u0441\u0440\u0435\u0434\u0438 \u043F\u043B\u0430\u0433\u0438\u043D\u043E\u0432-\u043B\u0438\u043D\u043A\u0435\u0440\u043E\u0432",
-      "set.precedence.desc": "\u041A\u043E\u0433\u0434\u0430 \u0434\u0432\u0430 \u043B\u0438\u043D\u043A\u0435\u0440\u0430 \u043F\u0440\u0435\u0442\u0435\u043D\u0434\u0443\u044E\u0442 \u043D\u0430 \u043E\u0434\u043D\u043E \u0441\u043B\u043E\u0432\u043E \u0438\u043B\u0438 \u043E\u0434\u043D\u0443 \u0441\u0441\u044B\u043B\u043A\u0443, \u0432\u044B\u0438\u0433\u0440\u044B\u0432\u0430\u0435\u0442 \u0442\u043E\u0442, \u043A\u0442\u043E \u0432\u044B\u0448\u0435 \u0432 \u0441\u043F\u0438\u0441\u043A\u0435, \u043E\u0441\u0442\u0430\u043B\u044C\u043D\u044B\u0435 \u0443\u0441\u0442\u0443\u043F\u0430\u044E\u0442. \u041E\u0442\u0441\u044E\u0434\u0430 \u043C\u043E\u0436\u043D\u043E \u0434\u0432\u0438\u0433\u0430\u0442\u044C \u0442\u043E\u043B\u044C\u043A\u043E \u044D\u0442\u043E\u0442 \u043F\u043B\u0430\u0433\u0438\u043D \u2014 \u043E\u0441\u0442\u0430\u043B\u044C\u043D\u044B\u0435 \u0438\u0437 \u0438\u0445 \u0441\u043E\u0431\u0441\u0442\u0432\u0435\u043D\u043D\u044B\u0445 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A.",
-      "set.precedence.other": "\u041F\u0435\u0440\u0435\u043C\u0435\u0441\u0442\u0438\u0442\u044C \u0438\u0437 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A \u0442\u043E\u0433\u043E \u043F\u043B\u0430\u0433\u0438\u043D\u0430",
+      "set.precedence.desc": "\u0421\u043B\u043E\u0432\u043E \u0438\u043B\u0438 \u0441\u0441\u044B\u043B\u043A\u0443, \u043D\u0430 \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u043F\u0440\u0435\u0442\u0435\u043D\u0434\u0443\u044E\u0442 \u043D\u0435\u0441\u043A\u043E\u043B\u044C\u043A\u043E \u043B\u0438\u043D\u043A\u0435\u0440\u043E\u0432, \u0437\u0430\u0431\u0438\u0440\u0430\u0435\u0442 \u0442\u043E\u0442, \u043A\u0442\u043E \u0432\u044B\u0448\u0435 \u0432 \u0441\u043F\u0438\u0441\u043A\u0435. \u041E\u0442\u0441\u044E\u0434\u0430 \u0434\u0432\u0438\u0433\u0430\u0435\u0442\u0441\u044F \u0442\u043E\u043B\u044C\u043A\u043E \u044D\u0442\u043E\u0442 \u043F\u043B\u0430\u0433\u0438\u043D \u2014 \u043E\u0441\u0442\u0430\u043B\u044C\u043D\u044B\u0435 \u0438\u0437 \u0441\u0432\u043E\u0438\u0445 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A.",
+      "set.precedence.other": "\u0414\u0432\u0438\u0433\u0430\u0435\u0442\u0441\u044F \u0438\u0437 \u0441\u0432\u043E\u0438\u0445 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A",
       "set.precedence.up": "\u0412\u044B\u0448\u0435",
       "set.precedence.down": "\u041D\u0438\u0436\u0435"
     };
@@ -3546,14 +3981,15 @@ var { splitLines, inTableCell } = require_markdown();
 var { BUILTIN_LANGUAGES } = require_builtin_languages();
 var { validateLanguage } = require_language_api();
 var { HeadingLinkerSettingTab } = require_settings_tab();
-var matcher = require_matcher();
-var highlight = require_highlight();
+var matcher = require_matcher2();
+var highlight = require_highlight2();
 var materialize = require_materialize();
 var api = require_api();
 var { HeadingSuggest, suggestAvailable } = require_heading_suggest();
 var { initI18n, t, plural } = require_i18n();
 var { menuSection } = require_menu();
 var aliases = require_aliases();
+var { ChoicePopover } = require_choices();
 function parseHeadingAliases(text, headings) {
   const lines = text.split("\n");
   const map = /* @__PURE__ */ new Map();
@@ -3609,7 +4045,6 @@ var HeadingLinkerPlugin = class extends Plugin {
     this.rebuildIndex();
     this.scheduleRebuild = debounce(() => {
       this.rebuildIndex();
-      this.notifyIndexChange();
       this.rerenderViews();
       this.updateStatusBar();
     }, 600, true);
@@ -3747,6 +4182,14 @@ var HeadingLinkerPlugin = class extends Plugin {
       }
     }));
     this.app.workspace.registerHoverLinkSource("heading-linker", { display: "Heading Linker", defaultMod: true });
+    this.app.workspace.registerHoverLinkSource("heading-linker-choice", { display: "Heading Linker", defaultMod: false });
+    this.choices = new ChoicePopover({
+      cls: "heading",
+      title: t("modal.choose.title"),
+      hover: (target, event, row, parent) => this.hoverTerm(event, row, target, this.activePath(), parent),
+      open: (target) => this.openTerm(target, this.activePath(), false)
+    });
+    this.register(() => this.choices.destroy());
     this.registerMarkdownPostProcessor((el, ctx) => this.processReadingMode(el, ctx));
     this.registerEditingHighlight();
     this.addCommand({ id: "link-current", name: t("cmd.linkThisNote"), callback: () => this.materializeCurrent() });
@@ -4031,11 +4474,20 @@ var HeadingLinkerPlugin = class extends Plugin {
   openTerm(linktext, sourcePath, newTab) {
     this.app.workspace.openLinkText(linktext, sourcePath || "", newTab);
   }
-  hoverTerm(event, targetEl, linktext, sourcePath) {
+  activePath() {
+    const f = this.app.workspace.getActiveFile();
+    return f ? f.path : "";
+  }
+  // `hoverParent` decides how long the preview lives. It is normally the plugin, but the
+  // duplicate list passes its own component so the preview it opens dies with the list —
+  // the same arrangement Obsidian uses for a preview opened from inside a preview.
+  hoverTerm(event, targetEl, linktext, sourcePath, hoverParent) {
     this.app.workspace.trigger("hover-link", {
       event,
-      source: "heading-linker",
-      hoverParent: this,
+      // A row of the duplicate list previews on plain hover; a word in the text follows the
+      // app's own rule for its render mode.
+      source: hoverParent ? "heading-linker-choice" : "heading-linker",
+      hoverParent: hoverParent || this,
       targetEl,
       linktext,
       sourcePath: sourcePath || ""

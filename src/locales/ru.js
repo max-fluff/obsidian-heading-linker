@@ -53,7 +53,6 @@ module.exports = {
   'exclude.remove': 'Убрать «{value}» из {noun}',
   'exclude.removePrefixed': 'Heading: убрать «{value}» из {noun}',
 
-  'highlight.matches': 'Несколько совпадений: {terms}',
 
   'modal.materialize.title': 'Превратить слова в ссылки на заголовки',
   'modal.materialize.summary': 'Проверка: файлов — {files}, замен — {replacements}.',
@@ -105,8 +104,8 @@ module.exports = {
   'notice.ignoreAdded': '«{entry}» игнорируется как источник.',
   'notice.ignoreRemoved': '«{entry}» больше не игнорируется.',
 
-  'suggest.inflection': 'форма заголовка из {file}',
-  'suggest.alias': 'алиас «{form}» · {file}',
+  'suggest.inflection': 'словоформа · {file}',
+  'suggest.alias': 'как «{form}» · {file}',
 
   'set.heading.sources': 'Источники заголовков',
   'set.glossaryMode.name': 'Откуда брать заголовки',
@@ -208,8 +207,8 @@ module.exports = {
   'plural.file': { one: '{n} файл', few: '{n} файла', many: '{n} файлов', other: '{n} файла' },
   'plural.link': { one: '{n} ссылка', few: '{n} ссылки', many: '{n} ссылок', other: '{n} ссылки' },
   'set.precedence.name': 'Приоритет среди плагинов-линкеров',
-  'set.precedence.desc': 'Когда два линкера претендуют на одно слово или одну ссылку, выигрывает тот, кто выше в списке, остальные уступают. Отсюда можно двигать только этот плагин — остальные из их собственных настроек.',
-  'set.precedence.other': 'Переместить из настроек того плагина',
+  'set.precedence.desc': 'Слово или ссылку, на которые претендуют несколько линкеров, забирает тот, кто выше в списке. Отсюда двигается только этот плагин — остальные из своих настроек.',
+  'set.precedence.other': 'Двигается из своих настроек',
   'set.precedence.up': 'Выше',
   'set.precedence.down': 'Ниже',
 };

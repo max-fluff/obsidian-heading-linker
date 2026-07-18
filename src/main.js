@@ -14,6 +14,7 @@ const { HeadingSuggest, suggestAvailable } = require('./heading-suggest');
 const { initI18n, t, plural } = require('./shared/i18n');
 const { menuSection } = require('./shared/menu');
 const aliases = require('./aliases');
+const { ChoicePopover } = require('./shared/prose/choices');
 
 // Per-heading aliases from `%% alias: a, b %%` comments inside a heading's section.
 // headings is metadataCache's headings array (with positions); returns Map<heading, [alias]>.
@@ -78,7 +79,7 @@ class HeadingLinkerPlugin extends Plugin {
 
     await this.loadLanguages();
     this.rebuildIndex();
-    this.scheduleRebuild = debounce(() => { this.rebuildIndex(); this.notifyIndexChange(); this.rerenderViews(); this.updateStatusBar(); }, 600, true);
+    this.scheduleRebuild = debounce(() => { this.rebuildIndex(); this.rerenderViews(); this.updateStatusBar(); }, 600, true);
 
     this.statusBarEl = this.addStatusBarItem();
     this.statusBarEl.addClass('mod-clickable');
@@ -230,6 +231,23 @@ class HeadingLinkerPlugin extends Plugin {
 
     // defaultMod: true → previews honour the Page Preview modifier setting, same as real links.
     this.app.workspace.registerHoverLinkSource('heading-linker', { display: 'Heading Linker', defaultMod: true });
+    // A second source for the rows of the duplicate list, and the only difference is
+    // defaultMod. Opening the list is already a deliberate act, so asking for the modifier
+    // again on the row inside it would be asking twice for one decision. Registered rather
+    // than faked by handing Page Preview an event with the modifier flags flipped.
+    this.app.workspace.registerHoverLinkSource('heading-linker-choice', { display: 'Heading Linker', defaultMod: false });
+
+    // Hovering a word that matches several headings lists them instead of previewing one of
+    // them at random; each row previews itself through Obsidian's own page preview.
+    // It owns a div in document.body, so it is registered for teardown rather than left to
+    // the plugin unloading around it.
+    this.choices = new ChoicePopover({
+      cls: 'heading',
+      title: t('modal.choose.title'),
+      hover: (target, event, row, parent) => this.hoverTerm(event, row, target, this.activePath(), parent),
+      open: (target) => this.openTerm(target, this.activePath(), false),
+    });
+    this.register(() => this.choices.destroy());
 
     this.registerMarkdownPostProcessor((el, ctx) => this.processReadingMode(el, ctx));
     this.registerEditingHighlight();
@@ -514,9 +532,24 @@ class HeadingLinkerPlugin extends Plugin {
     this.app.workspace.openLinkText(linktext, sourcePath || '', newTab);
   }
 
-  hoverTerm(event, targetEl, linktext, sourcePath) {
+  activePath() {
+    const f = this.app.workspace.getActiveFile();
+    return f ? f.path : '';
+  }
+
+  // `hoverParent` decides how long the preview lives. It is normally the plugin, but the
+  // duplicate list passes its own component so the preview it opens dies with the list —
+  // the same arrangement Obsidian uses for a preview opened from inside a preview.
+  hoverTerm(event, targetEl, linktext, sourcePath, hoverParent) {
     this.app.workspace.trigger('hover-link', {
-      event, source: 'heading-linker', hoverParent: this, targetEl, linktext, sourcePath: sourcePath || '',
+      event,
+      // A row of the duplicate list previews on plain hover; a word in the text follows the
+      // app's own rule for its render mode.
+      source: hoverParent ? 'heading-linker-choice' : 'heading-linker',
+      hoverParent: hoverParent || this,
+      targetEl,
+      linktext,
+      sourcePath: sourcePath || '',
     });
   }
 

@@ -12,6 +12,9 @@ const en = require('../src/shared/morphology/languages/en.js');
 // methods reach for. Vault access is stubbed by handing it the headings directly.
 function makePlugin({ files = [], settings = {}, aliases = new Map() } = {}) {
   const p = Object.assign({}, matcher);
+  // The real plugin gets this from the api mixin; rebuildIndex tells subscribers the index
+  // moved, and nothing here is subscribing.
+  p.notifyIndexChange = () => {};
   p.settings = Object.assign(
     {
       matchMode: 'stemmer',
@@ -97,6 +100,32 @@ describe('rebuildIndex', () => {
     const p = makePlugin({ files: [{ base: 'Guide', headings: [{ text: 'Spawn', level: 2 }, { text: 'Spawn', level: 3 }] }] });
     p.rebuildIndex();
     assert.strictEqual(p.terms.length, 1);
+  });
+});
+
+describe('smart case', () => {
+  // The rule that keeps "cns" in ordinary prose from turning into a link to the "CNS"
+  // heading. It is this plugin's alone — the glossary linker has no such setting — so it
+  // reaches the shared scan through a hook, and nothing else here would notice if that hook
+  // were wired up wrong.
+  const acronym = { base: 'Guide', headings: [{ text: 'CNS', level: 2 }] };
+
+  it('matches an acronym heading spelled the same way', () => {
+    const p = makePlugin({ files: [acronym] });
+    p.rebuildIndex();
+    assert.strictEqual(p.findMatches('the CNS here', null).length, 1);
+  });
+
+  it('does not match it in a different case', () => {
+    const p = makePlugin({ files: [acronym] });
+    p.rebuildIndex();
+    assert.deepStrictEqual(p.findMatches('the cns here', null), []);
+  });
+
+  it('matches either way once the setting is off', () => {
+    const p = makePlugin({ files: [acronym], settings: { smartCase: false } });
+    p.rebuildIndex();
+    assert.strictEqual(p.findMatches('the cns here', null).length, 1);
   });
 });
 

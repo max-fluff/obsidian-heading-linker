@@ -251,4 +251,34 @@ a.heading-link.internal-link:hover {
   font-weight: var(--font-semibold);
 }
 
+/* The list of what a word could mean, shown on hover over an ambiguous span. Hovering a
+   row opens Obsidian own page preview for that one target, so this stays a plain list. */
+.heading-choices {
+  position: fixed;
+  z-index: var(--layer-popover);
+  max-width: 320px;
+  padding: 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s);
+}
+.heading-choices.heading-hidden {
+  display: none;
+}
+.heading-choices-title {
+  padding: 2px 8px 6px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+.heading-choices-item {
+  padding: 4px 8px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.heading-choices-item:hover {
+  background: var(--background-modifier-hover);
+}
+
 /* Heading Linker 1.1.0 */

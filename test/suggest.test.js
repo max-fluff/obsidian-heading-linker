@@ -12,6 +12,9 @@ const en = require('../src/shared/morphology/languages/en.js');
 
 function makePlugin(files, aliases = new Map()) {
   const p = Object.assign({}, matcher);
+  // The real plugin gets this from the api mixin; rebuildIndex tells subscribers the index
+  // moved, and nothing here is subscribing.
+  p.notifyIndexChange = () => {};
   p.settings = { matchMode: 'stemmer', smartCase: true, minTermLength: 2, skipHeadings: true, headingLevels: [1, 2, 3, 4, 5, 6], excludeTerms: '' };
   p.activeLanguages = [en];
   p.keysCache = new Map();

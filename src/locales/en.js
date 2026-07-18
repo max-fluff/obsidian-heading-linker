@@ -67,10 +67,6 @@ module.exports = {
   'exclude.remove': 'Remove "{value}" from {noun}',
   'exclude.removePrefixed': 'Heading: remove "{value}" from {noun}',
 
-  // Highlight tooltip
-  // Neutral on purpose: a duplicate can come from this plugin or from a sibling, and the
-  // reader is picking a destination, not a plugin.
-  'highlight.matches': 'Several matches: {terms}',
 
   // Modals
   'modal.materialize.title': 'Turn words into heading links',
@@ -127,8 +123,11 @@ module.exports = {
   'notice.ignoreRemoved': 'No longer ignoring "{entry}".',
 
   // Autocomplete
-  'suggest.inflection': 'form of a heading in {file}',
-  'suggest.alias': 'alias “{form}” · {file}',
+  // The line under a name in the autocomplete popup. Kept to a fragment, not a sentence:
+  // it sits under the heading it describes, and the glossary linker's candidates share the
+  // same popup, so the two have to read as one list.
+  'suggest.inflection': 'word form · {file}',
+  'suggest.alias': 'as “{form}” · {file}',
 
   // Settings — sources
   'set.heading.sources': 'Heading sources',
@@ -238,8 +237,8 @@ module.exports = {
   'plural.file': { one: '{n} file', other: '{n} files' },
   'plural.link': { one: '{n} link', other: '{n} links' },
   'set.precedence.name': 'Priority among linker plugins',
-  'set.precedence.desc': 'When two linkers claim the same word or the same link, the one higher in this list wins and the other steps aside. Only this plugin’s own position can be moved from here — move the others from their own settings.',
-  'set.precedence.other': 'Move from that plugin’s own settings',
+  'set.precedence.desc': 'A word or link several linkers claim goes to the one highest in this list. You can only move this plugin — move the others from their own settings.',
+  'set.precedence.other': 'Moved from its own settings',
   'set.precedence.up': 'Move up',
   'set.precedence.down': 'Move down',
 };

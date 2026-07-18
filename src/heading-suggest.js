@@ -3,6 +3,7 @@
 const { EditorSuggest } = require('obsidian');
 const { t } = require('./shared/i18n');
 const { inTableCell } = require('./shared/markdown');
+const { mergeSuggestions } = require('./shared/prose/suggest');
 
 // The candidates for a typed word, ranked, or an empty list. Kept out of the class and free
 // of editor state: onTrigger needs the answer before it can decide whether to claim the
@@ -36,6 +37,30 @@ function collectSuggestions(plugin, query, ownFile) {
   const rank = (it) => (it.kind === 'form' ? 0 : 1);
   items.sort((a, b) => rank(a) - rank(b) || a.label.length - b.label.length || a.linktext.localeCompare(b.linktext));
   return items.slice(0, 8);
+}
+
+// The line under a candidate's name in the popup. Shared by our own rendering and by the
+// shape we hand a sibling linker, so a heading reads the same whoever's popup it lands in.
+function noteFor(item) {
+  if (item.kind === 'form') return t('suggest.inflection', { file: item.fileBase });
+  if (item.matchedForm && item.matchedForm.toLowerCase() !== item.label.toLowerCase()) {
+    return t('suggest.alias', { form: item.matchedForm, file: item.fileBase });
+  }
+  return item.fileBase;
+}
+
+// Our candidates in the shape a sibling linker consumes: no internals, and `display` says
+// what the inserted link should read — null meaning "keep whatever the reader typed", which
+// is what a 'form' match is for.
+function suggestionsFor(plugin, query) {
+  const active = plugin.app.workspace.getActiveFile();
+  const own = active ? plugin.currentFileBase(active.path) : null;
+  return collectSuggestions(plugin, query, own).map((it) => ({
+    label: it.label,
+    note: noteFor(it),
+    target: it.linktext,
+    display: it.kind === 'form' ? null : (it.matchedForm || it.label),
+  }));
 }
 
 // Inline autocomplete: while typing in an in-scope note, offer to insert a link to a
@@ -75,11 +100,16 @@ class HeadingSuggest extends EditorSuggest {
     // first suggester whose onTrigger returns a context and never asks the rest, so claiming
     // every word would silence a sibling linker that does know this one. The candidates are
     // built here rather than in getSuggestions so the answer is known before we claim.
-    const items = collectSuggestions(plugin, query, this.ownFileBase());
+    const items = this.merged(query);
     if (!items.length) return null;
     this.cached = { query, items };
 
     return { start: { line: cursor.line, ch: cursor.ch - query.length }, end: cursor, query };
+  }
+
+  // Our candidates plus every sibling linker's, in one list. See shared/prose/suggest.js.
+  merged(query) {
+    return mergeSuggestions(this.plugin, query, collectSuggestions(this.plugin, query, this.ownFileBase()));
   }
 
   // The note being typed in, when it is itself a heading source — its own headings are
@@ -93,28 +123,33 @@ class HeadingSuggest extends EditorSuggest {
     // onTrigger already built these to decide whether to trigger at all; recompute only if
     // something moved on between the two calls.
     if (this.cached && this.cached.query === context.query) return this.cached.items;
-    return collectSuggestions(this.plugin, context.query, this.ownFileBase());
+    return this.merged(context.query);
   }
 
   renderSuggestion(item, el) {
     el.addClass('heading-suggestion');
+    // A sibling's candidate is drawn exactly like our own. The reader is choosing a
+    // destination, not a plugin — the same reason the collision modal carries no plugin
+    // names either.
     el.createSpan({ cls: 'heading-suggestion-title', text: item.label });
     // The source file both explains the target and tells apart same-named headings;
     // an alias match also shows which wording matched.
-    let note = item.fileBase;
-    if (item.kind === 'form') note = t('suggest.inflection', { file: item.fileBase });
-    else if (item.matchedForm && item.matchedForm.toLowerCase() !== item.label.toLowerCase()) note = t('suggest.alias', { form: item.matchedForm, file: item.fileBase });
-    el.createSpan({ cls: 'heading-suggestion-note', text: note });
+    const note = item.insert ? item.note : noteFor(item);
+    if (note) el.createSpan({ cls: 'heading-suggestion-note', text: note });
   }
 
   selectSuggestion(item) {
     const ctx = this.context;
     if (!ctx) return;
     const editor = ctx.editor;
-    // 'form' keeps the typed wording; 'prefix' uses the matched wording (heading or alias).
-    const display = item.kind === 'form' ? ctx.query : (item.matchedForm || item.label);
     const inTable = inTableCell(editor.getValue(), editor.posToOffset(ctx.start));
-    const link = this.plugin.wikiLink(item.linktext, display, inTable);
+    // A sibling's candidate is written by the sibling: only it knows whether its target is
+    // a term title, a File#Heading or something else again.
+    // 'form' keeps the typed wording; 'prefix' uses the matched wording (heading or alias).
+    const link = item.insert
+      ? item.insert(item.display == null ? ctx.query : item.display, inTable)
+      : this.plugin.wikiLink(item.linktext, item.kind === 'form' ? ctx.query : (item.matchedForm || item.label), inTable);
+    if (!link) return;
     editor.replaceRange(link, ctx.start, ctx.end);
     editor.setCursor(editor.offsetToPos(editor.posToOffset(ctx.start) + link.length));
   }
@@ -122,4 +157,4 @@ class HeadingSuggest extends EditorSuggest {
 
 const suggestAvailable = () => typeof EditorSuggest === 'function';
 
-module.exports = { HeadingSuggest, suggestAvailable, collectSuggestions };
+module.exports = { HeadingSuggest, suggestAvailable, collectSuggestions, suggestionsFor };

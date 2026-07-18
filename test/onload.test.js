@@ -62,6 +62,35 @@ describe('onload', () => {
     assert.deepStrictEqual(menu.titles(), []);
   });
 
+  it('opens the duplicate list when the modifier is pressed over a word', async () => {
+    // In the editor the list stands in for a preview, so it waits for the modifier. By the
+    // time the reader presses it, mouseover has long since fired — so the key press has to
+    // be its own way in, or hovering first and pressing after does nothing at all.
+    const plugin = await load();
+    plugin.registerEditingHighlight();
+
+    const move = fakeApp.domHandlers.get('mousemove');
+    const keydown = fakeApp.domHandlers.get('keydown');
+    assert.ok(move && keydown, 'the modifier path was never registered');
+
+    const span = {
+      hasAttribute: (a) => a === 'data-heading-alts',
+      getAttribute: (a) => (a === 'data-heading-alts' ? 'Other#Spawn' : (a === 'data-heading-target' ? 'Guide#Spawn' : null)),
+      closest: () => span,
+    };
+    global.document.elementFromPoint = () => span;
+
+    const scheduled = [];
+    plugin.choices = { schedule: (c) => scheduled.push(c), leave: () => {} };
+
+    move({ clientX: 7, clientY: 9 });
+    keydown({ ctrlKey: false, metaKey: false });
+    assert.strictEqual(scheduled.length, 0, 'opened without the modifier');
+
+    keydown({ ctrlKey: true, metaKey: false });
+    assert.deepStrictEqual(scheduled, [['Guide#Spawn', 'Other#Spawn']]);
+  });
+
   it('offers alias collection on a note, flat and named for what it collects', async () => {
     // Harvesting moved here from the editor menu, where it had nothing to do with what was
     // under the cursor and both prose linkers offered it at once.
