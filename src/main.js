@@ -9,8 +9,11 @@ const { HeadingLinkerSettingTab } = require('./settings-tab');
 const matcher = require('./matcher');
 const highlight = require('./highlight');
 const materialize = require('./materialize');
+const api = require('./api');
 const { HeadingSuggest, suggestAvailable } = require('./heading-suggest');
 const { initI18n, t, plural } = require('./shared/i18n');
+const { menuSection } = require('./shared/menu');
+const aliases = require('./aliases');
 
 // Per-heading aliases from `%% alias: a, b %%` comments inside a heading's section.
 // headings is metadataCache's headings array (with positions); returns Map<heading, [alias]>.
@@ -70,10 +73,12 @@ class HeadingLinkerPlugin extends Plugin {
     // path -> Map<heading, [alias]>, parsed from `%%` comments; filled lazily, invalidated
     // on change, so rebuildIndex never re-reads file bodies.
     this.aliasCache = new Map();
+    // Needed before the first rebuild, since that already notifies.
+    this._indexListeners = new Set();
 
     await this.loadLanguages();
     this.rebuildIndex();
-    this.scheduleRebuild = debounce(() => { this.rebuildIndex(); this.rerenderViews(); this.updateStatusBar(); }, 600, true);
+    this.scheduleRebuild = debounce(() => { this.rebuildIndex(); this.notifyIndexChange(); this.rerenderViews(); this.updateStatusBar(); }, 600, true);
 
     this.statusBarEl = this.addStatusBarItem();
     this.statusBarEl.addClass('mod-clickable');
@@ -117,15 +122,72 @@ class HeadingLinkerPlugin extends Plugin {
       if (active && active.path === file.path) this.updateStatusBarDebounced();
     }));
 
+    // Everything the cursor can act on goes in Obsidian's own menu, flat and grouped by what
+    // the action does — not by which plugin answers for it. Nothing here can collide with a
+    // sibling: a link is recognised by exactly one linker, and on a word several match, only
+    // the owner finds a match at the cursor (see matchAtCursor).
     this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor) => {
+      const file = this.app.workspace.getActiveFile();
+      const sourcePath = file ? file.path : '';
       const link = this.headingLinkAt(editor);
-      if (this.settings.menuExclude && link) {
-        this.addExclusionMenuItem(menu, this.labelOf(link.linktext), 'Heading: ');
+
+      // Flat, and named for the list it writes to: "excluded headings" is already ours and
+      // "excluded terms" is already the glossary's, so the wording tells the two apart on its
+      // own. Wrapping one item in a submenu titled with the plugin name only added a click.
+      const excludeItem = (value) => {
+        if (!this.settings.menuExclude) return;
+        this.addExclusionMenuItem(menu, this.labelOf(value));
+      };
+
+      if (link) {
+        if (this.settings.menuUnlink) {
+          menu.addItem((i) => i.setTitle(t('menu.unlinkThisLink')).setIcon('unlink')
+            .onClick(() => this.unlinkLinkAt(editor, link)));
+        }
+        // The link's own wording is someone saying what this heading is called; collecting
+        // it makes the next occurrence of the phrase match on its own.
+        if (this.settings.menuCollect && link.targetFile && link.display !== this.labelOf(link.linktext)) {
+          menu.addItem((i) => i.setTitle(t('menu.collectThisAlias')).setIcon('download')
+            .onClick(() => this.collectAliasFromLink(link)));
+        }
+        excludeItem(link.linktext);
+        return;
       }
-      if (this.settings.menuUnlink && link) {
-        menu.addItem((i) => i.setTitle(t('menu.unlinkThisLink')).setIcon('unlink')
-          .onClick(() => this.unlinkLinkAt(editor, link)));
+
+      // A highlighted word that isn't a link yet: the other half of the same toggle, so it
+      // sits in the same menu rather than in one of our own.
+      const hit = this.matchAtCursor(editor);
+      if (!hit) {
+        // A word the sibling owns. We draw nothing on it, but we do match it, so the one
+        // thing still worth offering is the setting that makes us stop.
+        const word = this.wordAtCursor(editor);
+        if (word) excludeItem(word.linktext);
+        return;
       }
+      const display = hit.match.display;
+      const linktext = hit.match.linktext;
+      const candidates = () => this.cursorCandidates(hit, sourcePath, false);
+
+      if (file && this.settings.menuTurnInto) {
+        // Three ways to link the same word differ only in how far they reach, so they are
+        // one entry with a choice inside rather than three lines competing for attention.
+        const scope = this.settings.linkFirstOnly ? t('scope.first') : t('scope.all');
+        const linkGroup = menuSection(menu, t('menu.linkThisWord', { display }), true, 'link');
+        linkGroup.addItem((i) => i.setTitle(t('menu.linkHere', { display })).setIcon('link')
+          .onClick(() => this.chooseTerm(candidates(), t('menu.linkDisplayTo', { display }),
+            (c) => this.materializeSingle(file, linktext, display, editor.posToOffset({ line: hit.line, ch: hit.match.start }), 0, c))));
+        linkGroup.addItem((i) => i.setTitle(t('menu.linkScopeThisNote', { scope, display })).setIcon('links-coming-in')
+          .onClick(() => this.chooseTerm(candidates(), t('menu.linkScopeTo', { scope, display }),
+            (c) => this.materializeTerm(file, linktext, c))));
+        linkGroup.addItem((i) => i.setTitle(t('menu.linkScopeAllNotes', { scope, display })).setIcon('links-going-out')
+          .onClick(() => this.chooseTerm(candidates(), t('menu.linkScopeTo', { scope, display }),
+            (c) => this.materializeTermScope(linktext, c))));
+      }
+      if (this.settings.menuOpen) {
+        menu.addItem((i) => i.setTitle(t('menu.openThisWord', { display })).setIcon('file-text')
+          .onClick(() => this.chooseTerm(candidates(), t('menu.openTitle'), (c) => this.openTerm(c, sourcePath, false))));
+      }
+      excludeItem(linktext);
     }));
 
     this.registerEvent(this.app.workspace.on('file-menu', (menu, file, source) => {
@@ -134,6 +196,9 @@ class HeadingLinkerPlugin extends Plugin {
       if (!isFolder && !(file instanceof TFile && file.extension === 'md')) return;
       const path = file.path;
       const noun = isFolder ? t('noun.folder') : t('noun.file');
+      // Flat. Every one of these titles already begins with "Heading:", so a submenu named
+      // after the plugin said the same thing twice — and with the common settings it held a
+      // single item, which is a click to reach one line.
       const item = (title, icon, listKey, add) => menu.addItem((i) => i.setTitle(title).setIcon(icon)
         .onClick(() => this.setPathInList(listKey, path, add)));
 
@@ -152,6 +217,15 @@ class HeadingLinkerPlugin extends Plugin {
         if (this.pathListed('scopeFolders', path)) item(t('menu.removeFromScope', { noun }), 'folder-minus', 'scopeFolders', false);
         else item(t('menu.includeInScope', { noun }), 'folder-plus', 'scopeFolders', true);
       }
+
+      // Harvesting reads the note's links, so it belongs on the note rather than on a spot
+      // in the text — where it had nothing to do with what was under the cursor, and where
+      // both linkers offered it at once. Flat and named for what it collects, so the sibling's
+      // version reads as a different action rather than a duplicate of this one.
+      if (this.settings.menuCollect && !isFolder) {
+        menu.addItem((i) => i.setTitle(t('menu.collectFromNote')).setIcon('download')
+          .onClick(() => this.collectAliasesFromNote(file)));
+      }
     }));
 
     // defaultMod: true → previews honour the Page Preview modifier setting, same as real links.
@@ -166,6 +240,11 @@ class HeadingLinkerPlugin extends Plugin {
     this.addCommand({ id: 'unlink-current', name: t('cmd.unlinkThisNote'), callback: () => this.unlinkCurrent() });
     this.addCommand({ id: 'unlink-selection', name: t('cmd.unlinkSelection'), editorCallback: (editor) => this.unlinkSelection(editor) });
     this.addCommand({ id: 'unlink-scope', name: t('cmd.unlinkAllNotes'), callback: () => this.unlinkScope() });
+    this.addCommand({
+      id: 'collect-current',
+      name: t('cmd.collectThisNote'),
+      callback: () => { const f = this.app.workspace.getActiveFile(); if (f) this.collectAliasesFromNote(f); },
+    });
     this.addCommand({ id: 'rebuild-index', name: t('cmd.rebuildIndex'), callback: () => { this.rebuildIndex(); new Notice(t('notice.indexRebuilt')); } });
 
     // Path-list toggles for the active note (the command-palette twin of the explorer menu).
@@ -182,6 +261,12 @@ class HeadingLinkerPlugin extends Plugin {
     if (suggestAvailable()) this.registerEditorSuggest(new HeadingSuggest(this.app, this));
 
     this.addSettingTab(new HeadingLinkerSettingTab(this.app, this));
+
+    // Published last, and deliberately so. The api is how a sibling linker finds us and
+    // decides to stand down on a word we both match — so a load that throws before this
+    // point leaves no provider behind, and the sibling keeps highlighting instead of
+    // yielding to a plugin that never came up.
+    this.api = this.buildApi();
   }
 
   async saveSettings() {
@@ -513,6 +598,6 @@ class HeadingLinkerPlugin extends Plugin {
   }
 }
 
-Object.assign(HeadingLinkerPlugin.prototype, matcher, highlight, materialize);
+Object.assign(HeadingLinkerPlugin.prototype, matcher, highlight, materialize, aliases, api);
 
 module.exports = HeadingLinkerPlugin;

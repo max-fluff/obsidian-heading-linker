@@ -16,6 +16,9 @@ const DEFAULT_SETTINGS = {
   languageOrder: [], // ids in priority order (first = highest); overrides module defaults
   excludeTerms: '', // heading texts to drop from the index entirely
   linkFirstOnly: false,
+  // Who wins a word both linkers match. Read by the other side through the api, so both
+  // reach the same verdict; a heading anchor is narrower than a whole note, hence higher.
+  linkPrecedence: 20,
   linkSuggest: false, // offer [[link]] autocomplete while typing
   suggestMinChars: 3, // min typed length before autocomplete triggers
   suggestSkipAfter: '@#$^', // yield when the word follows one of these sigils (tags, math, block refs)
@@ -27,6 +30,7 @@ const DEFAULT_SETTINGS = {
   menuTurnInto: true,
   menuOpen: true,
   menuExclude: true,
+  menuCollect: true, // "collect this alias" / "collect aliases from links" in the editor menu
   menuUnlink: true,
 };
 

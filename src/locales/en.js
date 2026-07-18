@@ -10,6 +10,7 @@ module.exports = {
   'cmd.unlinkThisNote': 'Unlink headings: this note',
   'cmd.unlinkSelection': 'Unlink headings: selection',
   'cmd.unlinkAllNotes': 'Unlink headings: all notes',
+  'cmd.collectThisNote': 'Collect aliases from links: this note',
   'cmd.rebuildIndex': 'Rebuild heading index',
   'cmd.addSource': 'Add this note to heading sources',
   'cmd.removeSource': 'Remove this note from heading sources',
@@ -28,7 +29,14 @@ module.exports = {
   'scope.all': 'all',
 
   // Native context-menu items (brand prefix "Heading:" kept verbatim)
-  'menu.unlinkThisLink': 'Heading: unlink this link',
+  // No plugin name on these: they act on the link under the cursor, and a link belongs to
+  // exactly one linker, so there is never a second one of them to tell apart. The name goes
+  // on configuration items instead, where the reader is picking which plugin to change.
+  'menu.unlinkThisLink': 'Unlink this link',
+  'menu.collectThisAlias': 'Collect this alias',
+  // Says whose aliases: the glossary linker offers its own version on the same note menu,
+  // and the two write to different places.
+  'menu.collectFromNote': 'Collect heading aliases from links',
   'menu.addToSources': 'Heading: add {noun} to sources',
   'menu.removeFromSources': 'Heading: remove {noun} from sources',
   'menu.ignoreSource': 'Heading: ignore {noun} as a source',
@@ -38,14 +46,17 @@ module.exports = {
   'menu.removeFromScope': 'Heading: remove {noun} from scope',
   'menu.includeInScope': 'Heading: include {noun} in scope',
 
-  // Plugin's own link menu
-  'menu.linkToHeading': 'Link to this heading',
+  // Linking a word from Obsidian's own editor menu. The three ways to link differ only in
+  // how far they reach, so they share one entry with the choice inside it. Each reads on its
+  // own — a submenu item is read without its parent in view, so "Here" alone would not say
+  // what it does.
+  'menu.linkThisWord': 'Link “{display}”',
+  'menu.linkHere': 'Link “{display}” here',
   'menu.linkScopeThisNote': 'Link {scope} "{display}" in this note',
   'menu.linkScopeAllNotes': 'Link {scope} "{display}" in all notes',
   'menu.linkDisplayTo': 'Link "{display}" to…',
   'menu.linkScopeTo': 'Link {scope} "{display}" to…',
-  'menu.openNote': 'Open heading',
-  'menu.openNewTab': 'Open heading in a new tab',
+  'menu.openThisWord': 'Open “{display}”',
   'menu.openTitle': 'Open which heading?',
   'menu.openNewTabTitle': 'Open which heading in a new tab?',
 
@@ -57,7 +68,9 @@ module.exports = {
   'exclude.removePrefixed': 'Heading: remove "{value}" from {noun}',
 
   // Highlight tooltip
-  'highlight.matches': 'Matches several headings: {terms}',
+  // Neutral on purpose: a duplicate can come from this plugin or from a sibling, and the
+  // reader is picking a destination, not a plugin.
+  'highlight.matches': 'Several matches: {terms}',
 
   // Modals
   'modal.materialize.title': 'Turn words into heading links',
@@ -68,8 +81,8 @@ module.exports = {
   'modal.andMore': '…and {n} more',
   'modal.unlink.title': 'Unlink heading links',
   'modal.unlink.summary': 'Reviewing {files} file(s), {links} link(s).',
-  'modal.choose.title': 'Which heading?',
-  'modal.choose.body': 'This word matches more than one heading.',
+  'modal.choose.title': 'Which one?',
+  'modal.choose.body': 'This word has more than one match.',
 
   'btn.apply': 'Apply',
   'btn.cancel': 'Cancel',
@@ -93,6 +106,13 @@ module.exports = {
   'notice.scopeWritten': 'Wrote {links} across {files}.',
   'notice.scopeSkipped': ' Skipped {n} note(s) changed since the preview.',
   'notice.indexRebuilt': 'Heading index rebuilt.',
+  'notice.aliasAdded': 'Heading Linker: “{alias}” added as an alias of “{term}”',
+  'notice.aliasExists': 'Heading Linker: “{term}” already matches “{alias}”',
+  'notice.aliasesAdded': 'Heading Linker: {aliases} added',
+  'notice.noNewAliases': 'Heading Linker: no new aliases found',
+  // The index can be a moment behind the file: the heading was there when the menu opened
+  // and gone by the time the write ran.
+  'notice.headingGone': 'Heading Linker: “{term}” is no longer in that note',
   'notice.alreadyExcluded': '"{value}" is already excluded.',
   'notice.addedToExcluded': 'Added "{value}" to {where}.',
   'notice.wasNotExcluded': '"{value}" was not excluded.',
@@ -203,6 +223,8 @@ module.exports = {
   'set.menuExclude.desc': 'Offer "exclude word/heading" items.',
   'set.menuUnlink.name': 'Unlink action',
   'set.menuUnlink.desc': 'Offer "unlink this link" on a heading link.',
+  'set.menuCollect.name': '"Collect aliases" items',
+  'set.menuCollect.desc': 'Offer to collect a link’s own wording as an alias of the heading it points at — on the link itself, and for a whole note from its right-click menu.',
 
   // Settings — maintenance
   'set.heading.maintenance': 'Maintenance',
@@ -212,6 +234,12 @@ module.exports = {
 
   // Plurals
   'plural.term': { one: '{n} heading', other: '{n} headings' },
+  'plural.alias': { one: '{n} alias', other: '{n} aliases' },
   'plural.file': { one: '{n} file', other: '{n} files' },
   'plural.link': { one: '{n} link', other: '{n} links' },
+  'set.precedence.name': 'Priority among linker plugins',
+  'set.precedence.desc': 'When two linkers claim the same word or the same link, the one higher in this list wins and the other steps aside. Only this plugin’s own position can be moved from here — move the others from their own settings.',
+  'set.precedence.other': 'Move from that plugin’s own settings',
+  'set.precedence.up': 'Move up',
+  'set.precedence.down': 'Move down',
 };

@@ -37,6 +37,9 @@ var require_constants = __commonJS({
       excludeTerms: "",
       // heading texts to drop from the index entirely
       linkFirstOnly: false,
+      // Who wins a word both linkers match. Read by the other side through the api, so both
+      // reach the same verdict; a heading anchor is narrower than a whole note, hence higher.
+      linkPrecedence: 20,
       linkSuggest: false,
       // offer [[link]] autocomplete while typing
       suggestMinChars: 3,
@@ -53,6 +56,8 @@ var require_constants = __commonJS({
       menuTurnInto: true,
       menuOpen: true,
       menuExclude: true,
+      menuCollect: true,
+      // "collect this alias" / "collect aliases from links" in the editor menu
       menuUnlink: true
     };
     var sanitizeFolder2 = (s) => (s || "").split("/").map((x) => x.trim()).filter((x) => x && x !== "." && x !== "..").join("/");
@@ -1141,6 +1146,207 @@ var require_i18n = __commonJS({
   }
 });
 
+// src/shared/discover.js
+var require_discover = __commonJS({
+  "src/shared/discover.js"(exports2, module2) {
+    "use strict";
+    var LINKER_API = 1;
+    function discoverLinkers(app, opts) {
+      const minVersion = opts && opts.minVersion || LINKER_API;
+      const found = [];
+      const plugins = app && app.plugins && app.plugins.plugins;
+      if (!plugins)
+        return found;
+      for (const id of Object.keys(plugins)) {
+        const plugin = plugins[id];
+        const provider = plugin && plugin.api && plugin.api.linker;
+        if (!provider || typeof provider.id !== "string")
+          continue;
+        if (!(provider.apiVersion >= minVersion))
+          continue;
+        found.push(provider);
+      }
+      return found;
+    }
+    function outranks(a, b) {
+      if (a.precedence !== b.precedence)
+        return (a.precedence || 0) > (b.precedence || 0);
+      return String(a.id) < String(b.id);
+    }
+    function foreignRanges(app, self, text) {
+      const ranges = [];
+      for (const peer of discoverLinkers(app)) {
+        if (peer.id === self.id || !outranks(peer, self))
+          continue;
+        if (typeof peer.matches !== "function")
+          continue;
+        let matches;
+        try {
+          matches = peer.matches(text) || [];
+        } catch (e) {
+          matches = [];
+        }
+        for (const m of matches) {
+          if (m && typeof m.start === "number" && typeof m.end === "number")
+            ranges.push([m.start, m.end]);
+        }
+      }
+      return ranges.sort((a, b) => a[0] - b[0]);
+    }
+    function overlaps(ranges, s, e) {
+      for (const [rs, re] of ranges) {
+        if (rs >= e)
+          break;
+        if (re > s)
+          return true;
+      }
+      return false;
+    }
+    function ownedMatches(app, self, text, matches) {
+      if (!matches.length)
+        return matches;
+      const foreign = foreignRanges(app, self, text);
+      if (!foreign.length)
+        return matches;
+      return matches.filter((m) => !overlaps(foreign, m.start, m.end));
+    }
+    function yieldedCandidates(app, self, text) {
+      const out = [];
+      for (const peer of discoverLinkers(app)) {
+        if (peer.id === self.id || outranks(peer, self))
+          continue;
+        if (typeof peer.matches !== "function")
+          continue;
+        let matches;
+        try {
+          matches = peer.matches(text) || [];
+        } catch (e) {
+          matches = [];
+        }
+        for (const m of matches) {
+          if (!m || typeof m.start !== "number" || typeof m.end !== "number")
+            continue;
+          out.push({
+            start: m.start,
+            end: m.end,
+            label: m.label || m.target || "",
+            target: m.target,
+            // The peer's id travels with the candidate so it can survive a round trip through a
+            // DOM attribute — the editor decoration carries candidates as data, and the opener
+            // is looked up again at click time.
+            id: peer.id,
+            source: peer.displayName || peer.id,
+            open: (sourcePath, newTab) => {
+              if (typeof peer.open === "function")
+                peer.open(m.target, sourcePath, newTab);
+            }
+          });
+        }
+      }
+      return out;
+    }
+    function candidatesFor(candidates, s, e) {
+      return candidates.filter((c) => c.start < e && c.end > s);
+    }
+    function peersOffering(app, self, kind, text) {
+      const out = [];
+      for (const peer of discoverLinkers(app)) {
+        if (peer.id === self.id || typeof peer.offers !== "function")
+          continue;
+        let yes;
+        try {
+          yes = peer.offers(kind, text);
+        } catch (e) {
+          yes = false;
+        }
+        if (yes)
+          out.push(peer);
+      }
+      return out;
+    }
+    function siblingLinkers(app, self) {
+      return discoverLinkers(app).filter((p) => p.id !== self.id);
+    }
+    module2.exports = { LINKER_API, discoverLinkers, outranks, foreignRanges, overlaps, ownedMatches, yieldedCandidates, candidatesFor, peersOffering, siblingLinkers };
+  }
+});
+
+// src/shared/precedence.js
+var require_precedence = __commonJS({
+  "src/shared/precedence.js"(exports2, module2) {
+    "use strict";
+    var { discoverLinkers, outranks, siblingLinkers } = require_discover();
+    var STEP = 10;
+    function rankedLinkers(app) {
+      return discoverLinkers(app).slice().sort((a, b) => {
+        if (outranks(a, b))
+          return -1;
+        if (outranks(b, a))
+          return 1;
+        return 0;
+      });
+    }
+    function precedenceForIndex(app, self, index) {
+      const others = rankedLinkers(app).filter((p) => p.id !== self.id);
+      if (!others.length)
+        return self.precedence || 0;
+      const at = Math.max(0, Math.min(index, others.length));
+      const above = at > 0 ? others[at - 1].precedence || 0 : null;
+      const below = at < others.length ? others[at].precedence || 0 : null;
+      if (above === null)
+        return below + STEP;
+      if (below === null)
+        return above - STEP;
+      return (above + below) / 2;
+    }
+    function currentIndex(app, self) {
+      return rankedLinkers(app).findIndex((p) => p.id === self.id);
+    }
+    function renderPrecedence(containerEl, opts) {
+      const { app, provider, Setting, name, desc, save } = opts;
+      if (!provider || !siblingLinkers(app, provider).length)
+        return;
+      new Setting(containerEl).setName(name).setDesc(desc);
+      const cls = opts.cls || "linker";
+      const list = containerEl.createDiv({ cls: `${cls}-precedence-list` });
+      const draw = () => {
+        list.empty();
+        const ranked = rankedLinkers(app);
+        ranked.forEach((p, i) => {
+          const mine = p.id === provider.id;
+          const row = new Setting(list).setName(`${i + 1}. ${p.displayName || p.id}`);
+          if (!mine) {
+            row.setDesc(opts.otherDesc || "");
+            return;
+          }
+          row.settingEl.addClass(`${cls}-precedence-self`);
+          row.addExtraButton((b) => b.setIcon("arrow-up").setTooltip(opts.upTooltip || "").setDisabled(i === 0).onClick(async () => {
+            await save(precedenceForIndex(app, provider, i - 1));
+            refresh();
+          }));
+          row.addExtraButton((b) => b.setIcon("arrow-down").setTooltip(opts.downTooltip || "").setDisabled(i === ranked.length - 1).onClick(async () => {
+            await save(precedenceForIndex(app, provider, i + 1));
+            refresh();
+          }));
+        });
+      };
+      const refresh = () => {
+        for (const p of siblingLinkers(app, provider)) {
+          if (typeof p.refresh === "function") {
+            try {
+              p.refresh();
+            } catch (e) {
+            }
+          }
+        }
+        draw();
+      };
+      draw();
+    }
+    module2.exports = { STEP, rankedLinkers, precedenceForIndex, currentIndex, renderPrecedence };
+  }
+});
+
 // src/settings-tab.js
 var require_settings_tab = __commonJS({
   "src/settings-tab.js"(exports2, module2) {
@@ -1150,6 +1356,7 @@ var require_settings_tab = __commonJS({
     var { sanitizeFolder: sanitizeFolder2 } = require_constants();
     var { renderFolderList } = require_folder_list();
     var { t: t2, plural: plural2 } = require_i18n();
+    var { renderPrecedence: precedenceSetting } = require_precedence();
     var HeadingLinkerSettingTab2 = class extends PluginSettingTab {
       constructor(app, plugin) {
         super(app, plugin);
@@ -1333,12 +1540,33 @@ var require_settings_tab = __commonJS({
         menuToggle("menuOpen", t2("set.menuOpen.name"), t2("set.menuOpen.desc"));
         menuToggle("menuExclude", t2("set.menuExclude.name"), t2("set.menuExclude.desc"));
         menuToggle("menuUnlink", t2("set.menuUnlink.name"), t2("set.menuUnlink.desc"));
+        menuToggle("menuCollect", t2("set.menuCollect.name"), t2("set.menuCollect.desc"));
         new Setting(containerEl).setName(t2("set.heading.maintenance")).setHeading();
+        this.renderPrecedence(containerEl, save);
         new Setting(containerEl).setName(t2("set.rebuild.name")).setDesc(t2("set.rebuild.desc")).addButton((b) => b.setButtonText(t2("set.rebuild.button")).onClick(() => {
           this.plugin.rebuildIndex();
           new Notice2(t2("notice.indexRebuilt"));
           this.renderStatus();
         }));
+      }
+      // Where this plugin sits in the family-wide priority order. Shown only when another linker
+      // is installed — alone there is no order to argue about.
+      renderPrecedence(containerEl, save) {
+        precedenceSetting(containerEl, {
+          app: this.app,
+          provider: this.plugin.api && this.plugin.api.linker,
+          Setting,
+          cls: "heading",
+          name: t2("set.precedence.name"),
+          desc: t2("set.precedence.desc"),
+          otherDesc: t2("set.precedence.other"),
+          upTooltip: t2("set.precedence.up"),
+          downTooltip: t2("set.precedence.down"),
+          save: async (value) => {
+            this.plugin.settings.linkPrecedence = value;
+            await save(false);
+          }
+        });
       }
       renderLanguages(containerEl, s, save) {
         const langs = this.plugin.languages;
@@ -1468,10 +1696,10 @@ var require_matcher = __commonJS({
             if (linktexts.has(linktext))
               continue;
             linktexts.add(linktext);
-            const aliases = aliasMap && aliasMap.get(label) || [];
-            terms.push({ linktext, label, fileBase: base, path: file.path, aliases });
+            const aliases2 = aliasMap && aliasMap.get(label) || [];
+            terms.push({ linktext, label, fileBase: base, path: file.path, aliases: aliases2 });
             const forms = [{ text: label, words: labelWords }];
-            for (const a of aliases) {
+            for (const a of aliases2) {
               if (a.toLowerCase() === label.toLowerCase() || a.trim().length < minTermLength)
                 continue;
               const w = this.tokenizeForm(a);
@@ -1696,36 +1924,27 @@ var require_matcher = __commonJS({
 var require_highlight = __commonJS({
   "src/highlight.js"(exports2, module2) {
     "use strict";
-    var { Platform } = require("obsidian");
     var { t: t2 } = require_i18n();
-    var LONG_PRESS_MS = 500;
-    var fireContextMenu = (el, x, y) => el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: x, clientY: y }));
-    function longPressTracker(fire) {
-      let timer = null, x = 0, y = 0, target = null;
-      const cancel = () => {
-        if (timer) {
-          clearTimeout(timer);
-          timer = null;
-        }
-      };
-      return {
-        start(t3, el) {
-          target = el;
-          x = t3.clientX;
-          y = t3.clientY;
-          timer = setTimeout(() => {
-            timer = null;
-            fire(target, x, y);
-          }, LONG_PRESS_MS);
-        },
-        move(t3) {
-          if (timer && (Math.abs(t3.clientX - x) > 10 || Math.abs(t3.clientY - y) > 10))
-            cancel();
-        },
-        cancel
-      };
-    }
+    var { ownedMatches, yieldedCandidates, candidatesFor, discoverLinkers } = require_discover();
     module2.exports = {
+      // Our matches minus the ones a higher-ranked sibling linker also claims. With no sibling
+      // installed this is the list itself and costs nothing; with one, a word both know is
+      // drawn once, by the same plugin in both render modes, rather than by whichever ran
+      // first. See shared/discover.js.
+      ownSpans(text, matches) {
+        const provider = this.api && this.api.linker;
+        if (!provider)
+          return matches;
+        return ownedMatches(this.app, provider, text, matches);
+      },
+      // What the linkers that yielded a span to us would have offered there. Empty in a solo
+      // vault, so the caller pays nothing for asking.
+      yieldedIn(text) {
+        const provider = this.api && this.api.linker;
+        if (!provider)
+          return [];
+        return yieldedCandidates(this.app, provider, text);
+      },
       processReadingMode(el, ctx) {
         if (!this.settings.highlightInReading)
           return;
@@ -1761,9 +1980,10 @@ var require_highlight = __commonJS({
         const text = node.textContent;
         if (!text || text.length < 2)
           return;
-        const matches = this.findMatches(text, currentFile, { protect: true });
+        const matches = this.ownSpans(text, this.findMatches(text, currentFile, { protect: true }));
         if (!matches.length)
           return;
+        const yielded = this.yieldedIn(text);
         const frag = document.createDocumentFragment();
         let cursor = 0;
         for (const m of matches) {
@@ -1771,17 +1991,24 @@ var require_highlight = __commonJS({
             frag.appendChild(document.createTextNode(text.slice(cursor, m.start)));
           const linktext = m.linktext;
           const display = m.display;
+          const foreign = candidatesFor(yielded, m.start, m.end);
+          const alts = [...m.alts || [], ...foreign];
           const a = document.createElement("a");
           a.textContent = display;
           a.setAttribute("data-heading-target", linktext);
-          if (m.alts && m.alts.length) {
+          if (alts.length) {
             a.className = "heading-link heading-ambiguous";
-            const candidates = [linktext, ...m.alts];
-            a.setAttribute("aria-label", t2("highlight.matches", { terms: candidates.join(", ") }));
+            const candidates = [linktext, ...alts];
+            const names = candidates.map((c) => typeof c === "object" ? c.label : c);
+            a.setAttribute("aria-label", t2("highlight.matches", { terms: names.join(", ") }));
             const pick = (e, newTab) => {
               e.preventDefault();
               e.stopPropagation();
-              this.chooseTerm(candidates, newTab ? t2("menu.openNewTabTitle") : t2("menu.openTitle"), (c) => this.openTerm(c, sourcePath, newTab));
+              this.chooseTerm(
+                candidates.map((c) => typeof c === "object" ? { ...c, open: () => c.open(sourcePath, newTab) } : c),
+                newTab ? t2("menu.openNewTabTitle") : t2("menu.openTitle"),
+                (c) => this.openTerm(c, sourcePath, newTab)
+              );
             };
             a.addEventListener("click", (e) => pick(e, e.ctrlKey || e.metaKey));
             a.addEventListener("auxclick", (e) => {
@@ -1798,26 +2025,6 @@ var require_highlight = __commonJS({
             a.className = "internal-link heading-link";
             a.href = linktext;
             a.setAttribute("data-href", linktext);
-          }
-          a.addEventListener("contextmenu", (e) => {
-            const file = sourcePath ? this.app.vault.getAbstractFileByPath(sourcePath) : null;
-            const root = a.closest(".markdown-reading-view, .markdown-source-view, .markdown-preview-view") || a.ownerDocument;
-            let occurrence = 0;
-            for (const other of root.querySelectorAll("a.heading-link")) {
-              if (other === a)
-                break;
-              if (other.getAttribute("data-heading-target") === linktext && other.textContent === display)
-                occurrence++;
-            }
-            if (this.showLinkMenu(e, linktext, display, file, null, occurrence, m.alts))
-              e.stopPropagation();
-          });
-          if (Platform.isMobile) {
-            const lp = longPressTracker(fireContextMenu);
-            a.addEventListener("touchstart", (e) => lp.start(e.touches[0], a), { passive: true });
-            a.addEventListener("touchmove", (e) => lp.move(e.touches[0]), { passive: true });
-            a.addEventListener("touchend", lp.cancel);
-            a.addEventListener("touchcancel", lp.cancel);
           }
           frag.appendChild(a);
           cursor = m.end;
@@ -1853,10 +2060,18 @@ var require_highlight = __commonJS({
           }
           return m;
         };
-        const markWithAlts = (linktext, alts) => Decoration.mark({
-          class: "cm-heading-link cm-heading-ambiguous",
-          attributes: { "data-heading-target": linktext, "data-heading-alts": alts.join("\n"), "aria-label": t2("highlight.matches", { terms: [linktext, ...alts].join(", ") }) }
-        });
+        const markWithAlts = (linktext, alts, foreign) => {
+          const names = [linktext, ...alts, ...foreign.map((f) => f.label)];
+          const attributes = {
+            "data-heading-target": linktext,
+            "data-heading-alts": alts.join("\n"),
+            "aria-label": t2("highlight.matches", { terms: names.join(", ") })
+          };
+          if (foreign.length) {
+            attributes["data-heading-foreign"] = JSON.stringify(foreign.map((f) => ({ id: f.id, label: f.label, target: f.target, source: f.source })));
+          }
+          return Decoration.mark({ class: "cm-heading-link cm-heading-ambiguous", attributes });
+        };
         const skipNode = (name) => /code|link|url|header|hashtag|frontmatter|comment|tag|escape/i.test(name);
         const buildDeco = (editorView) => {
           const builder = new RangeSetBuilder();
@@ -1867,7 +2082,8 @@ var require_highlight = __commonJS({
           const tree = syntaxTree(editorView.state);
           for (const { from, to } of editorView.visibleRanges) {
             const text = editorView.state.doc.sliceString(from, to);
-            for (const m of plugin.findMatches(text, currentFile)) {
+            const yielded = plugin.yieldedIn(text);
+            for (const m of plugin.ownSpans(text, plugin.findMatches(text, currentFile))) {
               const start = from + m.start;
               const end = from + m.end;
               let skip = false;
@@ -1875,8 +2091,11 @@ var require_highlight = __commonJS({
                 if (skipNode(n.type.name))
                   skip = true;
               } });
-              if (!skip)
-                builder.add(start, end, m.alts && m.alts.length ? markWithAlts(m.linktext, m.alts) : markFor(m.linktext));
+              if (skip)
+                continue;
+              const alts = m.alts || [];
+              const foreign = candidatesFor(yielded, m.start, m.end);
+              builder.add(start, end, alts.length || foreign.length ? markWithAlts(m.linktext, alts, foreign) : markFor(m.linktext));
             }
           }
           return builder.finish();
@@ -1887,7 +2106,27 @@ var require_highlight = __commonJS({
           const v = el.getAttribute("data-heading-alts");
           return v ? v.split("\n") : null;
         };
-        const editorLp = longPressTracker(fireContextMenu);
+        const foreignOf = (el, sourcePath, newTab) => {
+          const raw = el.getAttribute("data-heading-foreign");
+          if (!raw)
+            return [];
+          let parsed;
+          try {
+            parsed = JSON.parse(raw);
+          } catch (err) {
+            return [];
+          }
+          const peers = discoverLinkers(plugin.app);
+          return parsed.map((f) => ({
+            label: f.label,
+            source: f.source,
+            open: () => {
+              const peer = peers.find((p) => p.id === f.id);
+              if (peer && typeof peer.open === "function")
+                peer.open(f.target, sourcePath, newTab);
+            }
+          }));
+        };
         const vp = ViewPlugin.fromClass(
           class {
             constructor(v) {
@@ -1917,46 +2156,33 @@ var require_highlight = __commonJS({
                   return;
                 const file = plugin.app.workspace.getActiveFile();
                 const sourcePath = file ? file.path : "";
-                const alts = altsOf(el);
-                const candidates = alts && alts.length ? [linktextOf(el), ...alts] : [linktextOf(el)];
+                const alts = altsOf(el) || [];
+                const pick = (newTab, title) => {
+                  const candidates = [linktextOf(el), ...alts, ...foreignOf(el, sourcePath, newTab)];
+                  plugin.chooseTerm(candidates, title, (c) => plugin.openTerm(c, sourcePath, newTab));
+                };
                 if (e.button === 1) {
-                  plugin.chooseTerm(candidates, t2("menu.openNewTabTitle"), (c) => plugin.openTerm(c, sourcePath, true));
+                  pick(true, t2("menu.openNewTabTitle"));
                   e.preventDefault();
                   return;
                 }
                 if (e.button !== 0 || !(e.ctrlKey || e.metaKey))
                   return;
-                plugin.chooseTerm(candidates, t2("menu.openTitle"), (c) => plugin.openTerm(c, sourcePath, false));
+                pick(false, t2("menu.openTitle"));
                 e.preventDefault();
               },
               mouseover(e) {
                 const el = targetEl(e);
                 if (!el)
                   return;
-                if (el.hasAttribute("data-heading-alts"))
+                if (el.hasAttribute("data-heading-alts") || el.hasAttribute("data-heading-foreign"))
                   return;
                 const file = plugin.app.workspace.getActiveFile();
                 plugin.hoverTerm(e, el, linktextOf(el), file ? file.path : "");
-              },
-              contextmenu(e, view2) {
-                const el = targetEl(e);
-                if (!el)
-                  return;
-                const file = plugin.app.workspace.getActiveFile();
-                plugin.showLinkMenu(e, linktextOf(el), el.textContent, file, view2.posAtDOM(el), void 0, altsOf(el));
-              },
-              touchstart(e) {
-                if (!Platform.isMobile)
-                  return;
-                const el = targetEl(e);
-                if (el)
-                  editorLp.start(e.touches[0], el);
-              },
-              touchmove(e) {
-                editorLp.move(e.touches[0]);
-              },
-              touchend: editorLp.cancel,
-              touchcancel: editorLp.cancel
+              }
+              // No handler for contextmenu: a right-click in the editor already raises Obsidian's
+              // own menu, and everything we offer for the word under the cursor is added there.
+              // One menu, whichever half of the toggle applies.
             }
           }
         );
@@ -2114,10 +2340,14 @@ var require_modals = __commonJS({
         contentEl.createEl("p", { text: t2("modal.choose.body") });
         const list = contentEl.createDiv({ cls: "heading-choose-list" });
         for (const term of this.opts.terms) {
-          const b = list.createEl("button", { text: term, cls: "heading-choose-item" });
+          const foreign = term && typeof term === "object";
+          const b = list.createEl("button", { cls: "heading-choose-item", text: foreign ? term.label : term });
           b.onclick = async () => {
-            await this.opts.onChoose(term);
             this.close();
+            if (foreign)
+              term.open();
+            else
+              await this.opts.onChoose(term);
           };
         }
         contentEl.createDiv({ cls: "heading-preview-buttons" }).createEl("button", { text: t2("btn.cancel") }).onclick = () => this.close();
@@ -2134,9 +2364,10 @@ var require_modals = __commonJS({
 var require_materialize = __commonJS({
   "src/materialize.js"(exports2, module2) {
     "use strict";
-    var { Menu, Notice: Notice2 } = require("obsidian");
+    var { Notice: Notice2 } = require("obsidian");
     var { splitLines: splitLines2 } = require_markdown();
     var { MaterializePreviewModal, UnlinkPreviewModal, ChooseTermModal } = require_modals();
+    var { candidatesFor } = require_discover();
     var { t: t2, plural: plural2 } = require_i18n();
     module2.exports = {
       collectMatches(text, currentFile) {
@@ -2316,57 +2547,58 @@ var require_materialize = __commonJS({
         }
         this.openUnlinkPreview(files, (results) => this.writeScopeResults(results));
       },
+      // The highlighted (not yet linked) match under the cursor, with whatever the other
+      // linkers would offer at the same spot, or null.
+      //
+      // It runs through ownSpans, so on a word several linkers know only the owner finds
+      // anything here — which is what keeps one "Link…" item in the menu instead of one per
+      // plugin. The others stay quiet and their readings ride along as candidates.
+      matchAtCursor(editor) {
+        const head = editor.getCursor("head");
+        const line = editor.getLine(head.line);
+        if (!line)
+          return null;
+        const currentFile = this.currentFileBase(this.app.workspace.getActiveFile() ? this.app.workspace.getActiveFile().path : "");
+        const matches = this.ownSpans(line, this.findMatches(line, currentFile, { protect: true }));
+        const hit = matches.find((m) => head.ch >= m.start && head.ch <= m.end);
+        if (!hit)
+          return null;
+        const foreign = candidatesFor(this.yieldedIn(line), hit.start, hit.end);
+        return { match: hit, foreign, line: head.line };
+      },
+      // The match under the cursor as we see it, ownership aside — so null only when this word
+      // means nothing to us at all.
+      //
+      // Used for excluding a word, and only for that. Excluding is a setting of *this* plugin:
+      // it stops us matching the word and says nothing about what the sibling does. Gating it on
+      // ownership hid it exactly where it is most wanted — on a word both linkers match, where
+      // the loser is drawing nothing yet still matches, and the settings tab was the only way
+      // left to tell it to stop.
+      wordAtCursor(editor) {
+        const head = editor.getCursor("head");
+        const line = editor.getLine(head.line);
+        if (!line)
+          return null;
+        const currentFile = this.currentFileBase(this.app.workspace.getActiveFile() ? this.app.workspace.getActiveFile().path : "");
+        const matches = this.findMatches(line, currentFile, { protect: true });
+        return matches.find((m) => head.ch >= m.start && head.ch <= m.end) || null;
+      },
+      // Every reading of the match under the cursor: ours, our own same-named alternatives, and
+      // the ones other linkers stood down on. What the menu offers to link or open.
+      cursorCandidates(hit, sourcePath, newTab) {
+        const own = [hit.match.linktext, ...hit.match.alts || []];
+        const foreign = hit.foreign.map((c) => ({ ...c, open: () => c.open(sourcePath, newTab) }));
+        return [...own, ...foreign];
+      },
       chooseTerm(candidates, title, action) {
         const list = (candidates || []).filter(Boolean);
-        if (list.length <= 1)
-          return action(list[0]);
+        if (list.length <= 1) {
+          const only = list[0];
+          if (only && typeof only === "object")
+            return only.open();
+          return action(only);
+        }
         new ChooseTermModal(this.app, { title, terms: list, onChoose: action }).open();
-      },
-      showLinkMenu(evt, linktext, display, file, nearOffset, occurrence, alts) {
-        const sourcePath = file ? file.path : "";
-        const candidates = alts && alts.length ? [linktext, ...alts] : [linktext];
-        const label = this.labelOf(linktext);
-        const groups = [];
-        if (file && this.settings.menuTurnInto) {
-          const scope = this.settings.linkFirstOnly ? t2("scope.first") : t2("scope.all");
-          groups.push((menu2) => {
-            menu2.addItem((i) => i.setTitle(t2("menu.linkToHeading")).setIcon("link").onClick(() => this.chooseTerm(
-              candidates,
-              t2("menu.linkDisplayTo", { display }),
-              (c) => this.materializeSingle(file, linktext, display, nearOffset, occurrence, c)
-            )));
-            menu2.addItem((i) => i.setTitle(t2("menu.linkScopeThisNote", { scope, display })).setIcon("links-coming-in").onClick(() => this.chooseTerm(
-              candidates,
-              t2("menu.linkScopeTo", { scope, display }),
-              (c) => this.materializeTerm(file, linktext, c)
-            )));
-            menu2.addItem((i) => i.setTitle(t2("menu.linkScopeAllNotes", { scope, display })).setIcon("links-going-out").onClick(() => this.chooseTerm(
-              candidates,
-              t2("menu.linkScopeTo", { scope, display }),
-              (c) => this.materializeTermScope(linktext, c)
-            )));
-          });
-        }
-        if (this.settings.menuExclude) {
-          groups.push((menu2) => this.addExclusionMenuItem(menu2, label));
-        }
-        if (this.settings.menuOpen) {
-          groups.push((menu2) => {
-            menu2.addItem((i) => i.setTitle(t2("menu.openNote")).setIcon("file-text").onClick(() => this.chooseTerm(candidates, t2("menu.openTitle"), (c) => this.openTerm(c, sourcePath, false))));
-            menu2.addItem((i) => i.setTitle(t2("menu.openNewTab")).setIcon("file-plus").onClick(() => this.chooseTerm(candidates, t2("menu.openNewTabTitle"), (c) => this.openTerm(c, sourcePath, true))));
-          });
-        }
-        if (!groups.length)
-          return false;
-        const menu = new Menu();
-        groups.forEach((group, i) => {
-          if (i)
-            menu.addSeparator();
-          group(menu);
-        });
-        evt.preventDefault();
-        menu.showAtMouseEvent(evt);
-        return true;
       },
       isExcluded(value) {
         const v = value.toLowerCase();
@@ -2460,6 +2692,91 @@ var require_materialize = __commonJS({
   }
 });
 
+// src/api.js
+var require_api = __commonJS({
+  "src/api.js"(exports2, module2) {
+    "use strict";
+    var { LINKER_API } = require_discover();
+    module2.exports = {
+      buildApi() {
+        const plugin = this;
+        return {
+          version: this.manifest.version,
+          // Every indexed heading: { linktext, label, fileBase, path, aliases }.
+          getTerms: () => this.getTerms(),
+          // Resolve a heading label or alias (case-insensitive) to its term, or null.
+          resolveTerm: (name) => this.resolveTerm(name),
+          // Morphology helpers (same engine the matcher uses).
+          keysFor: (word) => this.keysFor(String(word || "")),
+          // Heading matches in arbitrary text, skipping protected ranges.
+          findMatches: (text) => this.findMatches(String(text || ""), null, { protect: true }),
+          // Subscribe to index rebuilds; returns an unsubscribe function.
+          onChange: (cb) => this.onIndexChange(cb),
+          linker: {
+            apiVersion: LINKER_API,
+            id: "heading-linker",
+            displayName: "Heading Linker",
+            // Which half of the family we are. Prose linkers contest bare words with each other
+            // and never with the sigil pair, so this is what keeps the precedence setting from
+            // offering a choice between two plugins that can't collide.
+            kind: "prose",
+            // Higher wins a contested word. A heading points into a file at an anchor, which is
+            // a narrower answer than a whole note, so it outranks the glossary by default —
+            // adjustable, and read from here by the other side rather than assumed. A getter,
+            // so a change in settings is seen without rebuilding the api object.
+            get precedence() {
+              return plugin.settings.linkPrecedence;
+            },
+            // Spans of `text` we claim, with what each one resolves to. Protected ranges are
+            // skipped, so the answer matches what we would actually decorate. The label and
+            // target let whoever owns the span offer ours as a choice instead of dropping it.
+            matches: (text) => plugin.findMatches(String(text || ""), null, { protect: true }).map((m) => ({ start: m.start, end: m.end, label: m.label, target: m.linktext })),
+            // Open one of our targets. Ours to resolve — nobody else should have to know that a
+            // heading link is a File#Heading.
+            open: (target, sourcePath, newTab) => plugin.openTerm(target, sourcePath, newTab),
+            // Redraw after the other side changes who ranks higher, so the setting takes effect
+            // in both plugins at once instead of at the next rebuild.
+            refresh: () => plugin.rerenderViews()
+          }
+        };
+      },
+      getTerms() {
+        return (this.terms || []).map((t2) => ({ linktext: t2.linktext, label: t2.label, fileBase: t2.fileBase, path: t2.path, aliases: (t2.aliases || []).slice() }));
+      },
+      resolveTerm(name) {
+        const q = String(name || "").toLowerCase();
+        if (!q)
+          return null;
+        for (const t2 of this.terms || []) {
+          if (t2.label.toLowerCase() === q)
+            return t2;
+          if ((t2.aliases || []).some((a) => a.toLowerCase() === q))
+            return t2;
+        }
+        return null;
+      },
+      // Index-change subscription, used by the API and by anything that has to redraw when the
+      // headings move. Returns an unsubscribe function.
+      onIndexChange(cb) {
+        if (typeof cb !== "function")
+          return () => {
+          };
+        this._indexListeners.add(cb);
+        return () => this._indexListeners.delete(cb);
+      },
+      notifyIndexChange() {
+        for (const cb of this._indexListeners) {
+          try {
+            cb();
+          } catch (e) {
+            console.error("Heading Linker: index listener failed", e);
+          }
+        }
+      }
+    };
+  }
+});
+
 // src/heading-suggest.js
 var require_heading_suggest = __commonJS({
   "src/heading-suggest.js"(exports2, module2) {
@@ -2467,6 +2784,38 @@ var require_heading_suggest = __commonJS({
     var { EditorSuggest } = require("obsidian");
     var { t: t2 } = require_i18n();
     var { inTableCell: inTableCell2 } = require_markdown();
+    function collectSuggestions(plugin, query, ownFile) {
+      const qLower = query.toLowerCase();
+      const byLink = /* @__PURE__ */ new Map();
+      const seenCand = /* @__PURE__ */ new Set();
+      for (const key of plugin.keysFor(query)) {
+        const bucket = plugin.index.byKey.get(key);
+        if (!bucket)
+          continue;
+        for (const c of bucket) {
+          if (c.wordCount !== 1 || seenCand.has(c) || c.fileBase === ownFile)
+            continue;
+          seenCand.add(c);
+          if (!byLink.has(c.linktext))
+            byLink.set(c.linktext, { linktext: c.linktext, label: c.label, fileBase: c.fileBase, kind: "form" });
+        }
+      }
+      for (const term of plugin.terms || []) {
+        if (byLink.has(term.linktext) || term.fileBase === ownFile)
+          continue;
+        let form = null;
+        if (term.label.toLowerCase().startsWith(qLower))
+          form = term.label;
+        else if (term.aliases)
+          form = term.aliases.find((a) => a.toLowerCase().startsWith(qLower));
+        if (form)
+          byLink.set(term.linktext, { linktext: term.linktext, label: term.label, fileBase: term.fileBase, kind: "prefix", matchedForm: form });
+      }
+      const items = [...byLink.values()];
+      const rank = (it) => it.kind === "form" ? 0 : 1;
+      items.sort((a, b) => rank(a) - rank(b) || a.label.length - b.label.length || a.linktext.localeCompare(b.linktext));
+      return items.slice(0, 8);
+    }
     var HeadingSuggest2 = class extends EditorSuggest {
       constructor(app, plugin) {
         super(app);
@@ -2493,43 +2842,22 @@ var require_heading_suggest = __commonJS({
         const off = editor.posToOffset(cursor);
         if (plugin.isProtectedAt(editor.getValue(), off))
           return null;
+        const items = collectSuggestions(plugin, query, this.ownFileBase());
+        if (!items.length)
+          return null;
+        this.cached = { query, items };
         return { start: { line: cursor.line, ch: cursor.ch - query.length }, end: cursor, query };
       }
+      // The note being typed in, when it is itself a heading source — its own headings are
+      // never offered, the same exclusion the highlighter makes.
+      ownFileBase() {
+        const active = this.plugin.app.workspace.getActiveFile();
+        return active ? this.plugin.currentFileBase(active.path) : null;
+      }
       getSuggestions(context) {
-        const plugin = this.plugin;
-        const q = context.query;
-        const qLower = q.toLowerCase();
-        const byLink = /* @__PURE__ */ new Map();
-        const active = plugin.app.workspace.getActiveFile();
-        const ownFile = active ? plugin.currentFileBase(active.path) : null;
-        const seenCand = /* @__PURE__ */ new Set();
-        for (const key of plugin.keysFor(q)) {
-          const bucket = plugin.index.byKey.get(key);
-          if (!bucket)
-            continue;
-          for (const c of bucket) {
-            if (c.wordCount !== 1 || seenCand.has(c) || c.fileBase === ownFile)
-              continue;
-            seenCand.add(c);
-            if (!byLink.has(c.linktext))
-              byLink.set(c.linktext, { linktext: c.linktext, label: c.label, fileBase: c.fileBase, kind: "form" });
-          }
-        }
-        for (const term of plugin.terms || []) {
-          if (byLink.has(term.linktext) || term.fileBase === ownFile)
-            continue;
-          let form = null;
-          if (term.label.toLowerCase().startsWith(qLower))
-            form = term.label;
-          else if (term.aliases)
-            form = term.aliases.find((a) => a.toLowerCase().startsWith(qLower));
-          if (form)
-            byLink.set(term.linktext, { linktext: term.linktext, label: term.label, fileBase: term.fileBase, kind: "prefix", matchedForm: form });
-        }
-        const items = [...byLink.values()];
-        const rank = (it) => it.kind === "form" ? 0 : 1;
-        items.sort((a, b) => rank(a) - rank(b) || a.label.length - b.label.length || a.linktext.localeCompare(b.linktext));
-        return items.slice(0, 8);
+        if (this.cached && this.cached.query === context.query)
+          return this.cached.items;
+        return collectSuggestions(this.plugin, context.query, this.ownFileBase());
       }
       renderSuggestion(item, el) {
         el.addClass("heading-suggestion");
@@ -2554,7 +2882,230 @@ var require_heading_suggest = __commonJS({
       }
     };
     var suggestAvailable2 = () => typeof EditorSuggest === "function";
-    module2.exports = { HeadingSuggest: HeadingSuggest2, suggestAvailable: suggestAvailable2 };
+    module2.exports = { HeadingSuggest: HeadingSuggest2, suggestAvailable: suggestAvailable2, collectSuggestions };
+  }
+});
+
+// src/shared/menu.js
+var require_menu = __commonJS({
+  "src/shared/menu.js"(exports2, module2) {
+    "use strict";
+    var obsidian = require("obsidian");
+    var submenuSupport = null;
+    function supportsSubmenu() {
+      if (submenuSupport !== null)
+        return submenuSupport;
+      submenuSupport = false;
+      try {
+        const probe = new obsidian.Menu();
+        probe.addItem((item) => {
+          submenuSupport = typeof item.setSubmenu === "function";
+        });
+      } catch (e) {
+        submenuSupport = false;
+      }
+      return submenuSupport;
+    }
+    function menuSection2(menu, label, grouped, icon) {
+      if (!grouped)
+        return menu;
+      if (!supportsSubmenu()) {
+        return {
+          addItem(cb) {
+            return menu.addItem((item) => {
+              const setTitle = item.setTitle.bind(item);
+              item.setTitle = (title) => setTitle(`${label}: ${title}`);
+              cb(item);
+            });
+          },
+          addSeparator() {
+            return menu.addSeparator();
+          }
+        };
+      }
+      let sub = null;
+      const ensure = () => {
+        if (!sub) {
+          menu.addItem((item) => {
+            item.setTitle(label);
+            if (icon)
+              item.setIcon(icon);
+            sub = item.setSubmenu();
+          });
+        }
+        return sub;
+      };
+      return {
+        addItem(cb) {
+          return ensure().addItem(cb);
+        },
+        addSeparator() {
+          return sub ? sub.addSeparator() : null;
+        }
+      };
+    }
+    var STORE = "__linkerMenuSections";
+    function sharedSection(menu, key, label, icon) {
+      if (!supportsSubmenu())
+        return menuSection2(menu, label, true);
+      let store = menu[STORE];
+      if (!store) {
+        store = {};
+        try {
+          Object.defineProperty(menu, STORE, { value: store, enumerable: false, configurable: true });
+        } catch (e) {
+          return menuSection2(menu, label, true, icon);
+        }
+      }
+      if (!store[key]) {
+        menu.addItem((item) => {
+          item.setTitle(label);
+          if (icon)
+            item.setIcon(icon);
+          store[key] = item.setSubmenu();
+        });
+      }
+      return store[key];
+    }
+    module2.exports = { menuSection: menuSection2, sharedSection, supportsSubmenu };
+  }
+});
+
+// src/aliases.js
+var require_aliases = __commonJS({
+  "src/aliases.js"(exports2, module2) {
+    "use strict";
+    var { Notice: Notice2 } = require("obsidian");
+    var { t: t2, plural: plural2 } = require_i18n();
+    var HEADING_RE = /^(#{1,6})\s+(.*)$/;
+    var ALIAS_LINE_RE = /^\s*%%\s*alias(?:es)?\s*:\s*(.*?)\s*%%\s*$/i;
+    var headingTextOf = (line) => {
+      const m = HEADING_RE.exec(line);
+      return m ? m[2].trim() : null;
+    };
+    function headingRegion(lines, heading) {
+      let start = -1;
+      for (let i = 0; i < lines.length; i++) {
+        const text = headingTextOf(lines[i]);
+        if (text === null)
+          continue;
+        if (start < 0) {
+          if (text === heading)
+            start = i;
+          continue;
+        }
+        return { start, end: i };
+      }
+      return start < 0 ? null : { start, end: lines.length };
+    }
+    function addAliasesToHeading(text, heading, aliases2) {
+      const lines = text.split("\n");
+      const region = headingRegion(lines, heading);
+      if (!region)
+        return null;
+      for (let i = region.start + 1; i < region.end; i++) {
+        const m = ALIAS_LINE_RE.exec(lines[i]);
+        if (!m)
+          continue;
+        const existing = m[1].split(",").map((a) => a.trim()).filter(Boolean);
+        const seen = new Set(existing.map((a) => a.toLowerCase()));
+        const fresh = aliases2.filter((a) => !seen.has(a.toLowerCase()));
+        if (!fresh.length)
+          return null;
+        lines[i] = `%% alias: ${[...existing, ...fresh].join(", ")} %%`;
+        return lines.join("\n");
+      }
+      lines.splice(region.start + 1, 0, `%% alias: ${aliases2.join(", ")} %%`);
+      return lines.join("\n");
+    }
+    module2.exports = {
+      // Exported for the tests: the text rewrite is the part that touches the reader's notes,
+      // and it is pure, so it can be checked without an app.
+      _addAliasesToHeading: addAliasesToHeading,
+      _headingRegion: headingRegion,
+      // Aliases already attached to `heading` in `file`, lower-cased, including the heading's
+      // own text — everything a new alias would be redundant against.
+      knownFormsFor(file, heading) {
+        const forms = /* @__PURE__ */ new Set([heading.toLowerCase()]);
+        const cached = this.aliasCache.get(file.path);
+        const list = cached && cached.get(heading);
+        for (const a of list || [])
+          forms.add(String(a).toLowerCase());
+        return forms;
+      },
+      // The one write path. `perHeading` is Map<heading, string[]>; returns how many aliases
+      // actually landed, which is not the same as how many were offered — a concurrent edit can
+      // remove the heading between the menu opening and the click.
+      async writeHeadingAliases(file, perHeading) {
+        let added = 0;
+        await this.app.vault.process(file, (text) => {
+          let out = text;
+          for (const [heading, aliases2] of perHeading) {
+            const next = addAliasesToHeading(out, heading, aliases2);
+            if (next === null)
+              continue;
+            out = next;
+            added += aliases2.length;
+          }
+          return out;
+        });
+        if (added) {
+          this.aliasCache.delete(file.path);
+          await this.loadFileAliases(file);
+          this.scheduleRebuild();
+        }
+        return added;
+      },
+      // Collect one link's wording as an alias for the heading it points at.
+      async collectAliasFromLink(link) {
+        const heading = this.labelOf(link.linktext);
+        const display = String(link.display || "").trim();
+        if (!link.targetFile || !heading || !display)
+          return;
+        if (this.knownFormsFor(link.targetFile, heading).has(display.toLowerCase())) {
+          new Notice2(t2("notice.aliasExists", { alias: display, term: heading }));
+          return;
+        }
+        const added = await this.writeHeadingAliases(link.targetFile, /* @__PURE__ */ new Map([[heading, [display]]]));
+        new Notice2(added ? t2("notice.aliasAdded", { alias: display, term: heading }) : t2("notice.headingGone", { term: heading }));
+      },
+      // Collect every heading link in `file` whose wording differs from the heading it points at.
+      //
+      // Grouped by target note so each one is opened and written once, however many of its
+      // headings the source note links to.
+      async collectAliasesFromNote(file) {
+        const cache = this.app.metadataCache.getFileCache(file);
+        const links = cache && cache.links || [];
+        const byFile = /* @__PURE__ */ new Map();
+        for (const link of links) {
+          const hash = String(link.link || "").indexOf("#");
+          if (hash < 0)
+            continue;
+          const heading = String(link.link).slice(hash + 1).trim();
+          const display = String(link.displayText || "").trim();
+          if (!heading || !display)
+            continue;
+          const target = this.app.metadataCache.getFirstLinkpathDest(String(link.link).slice(0, hash), file.path);
+          if (!target || !this.isGlossaryFile(target))
+            continue;
+          if (display.includes(">") || this.knownFormsFor(target, heading).has(display.toLowerCase()))
+            continue;
+          let perHeading = byFile.get(target.path);
+          if (!perHeading) {
+            perHeading = { file: target, headings: /* @__PURE__ */ new Map() };
+            byFile.set(target.path, perHeading);
+          }
+          const list = perHeading.headings.get(heading) || [];
+          if (!list.some((a) => a.toLowerCase() === display.toLowerCase()))
+            list.push(display);
+          perHeading.headings.set(heading, list);
+        }
+        let total = 0;
+        for (const entry of byFile.values())
+          total += await this.writeHeadingAliases(entry.file, entry.headings);
+        new Notice2(total ? t2("notice.aliasesAdded", { aliases: plural2("alias", total) }) : t2("notice.noNewAliases"));
+      }
+    };
   }
 });
 
@@ -2570,6 +3121,7 @@ var require_en2 = __commonJS({
       "cmd.unlinkThisNote": "Unlink headings: this note",
       "cmd.unlinkSelection": "Unlink headings: selection",
       "cmd.unlinkAllNotes": "Unlink headings: all notes",
+      "cmd.collectThisNote": "Collect aliases from links: this note",
       "cmd.rebuildIndex": "Rebuild heading index",
       "cmd.addSource": "Add this note to heading sources",
       "cmd.removeSource": "Remove this note from heading sources",
@@ -2585,7 +3137,14 @@ var require_en2 = __commonJS({
       "scope.first": "first",
       "scope.all": "all",
       // Native context-menu items (brand prefix "Heading:" kept verbatim)
-      "menu.unlinkThisLink": "Heading: unlink this link",
+      // No plugin name on these: they act on the link under the cursor, and a link belongs to
+      // exactly one linker, so there is never a second one of them to tell apart. The name goes
+      // on configuration items instead, where the reader is picking which plugin to change.
+      "menu.unlinkThisLink": "Unlink this link",
+      "menu.collectThisAlias": "Collect this alias",
+      // Says whose aliases: the glossary linker offers its own version on the same note menu,
+      // and the two write to different places.
+      "menu.collectFromNote": "Collect heading aliases from links",
       "menu.addToSources": "Heading: add {noun} to sources",
       "menu.removeFromSources": "Heading: remove {noun} from sources",
       "menu.ignoreSource": "Heading: ignore {noun} as a source",
@@ -2594,14 +3153,17 @@ var require_en2 = __commonJS({
       "menu.addToAlwaysExcluded": "Heading: add {noun} to always-excluded",
       "menu.removeFromScope": "Heading: remove {noun} from scope",
       "menu.includeInScope": "Heading: include {noun} in scope",
-      // Plugin's own link menu
-      "menu.linkToHeading": "Link to this heading",
+      // Linking a word from Obsidian's own editor menu. The three ways to link differ only in
+      // how far they reach, so they share one entry with the choice inside it. Each reads on its
+      // own — a submenu item is read without its parent in view, so "Here" alone would not say
+      // what it does.
+      "menu.linkThisWord": "Link \u201C{display}\u201D",
+      "menu.linkHere": "Link \u201C{display}\u201D here",
       "menu.linkScopeThisNote": 'Link {scope} "{display}" in this note',
       "menu.linkScopeAllNotes": 'Link {scope} "{display}" in all notes',
       "menu.linkDisplayTo": 'Link "{display}" to\u2026',
       "menu.linkScopeTo": 'Link {scope} "{display}" to\u2026',
-      "menu.openNote": "Open heading",
-      "menu.openNewTab": "Open heading in a new tab",
+      "menu.openThisWord": "Open \u201C{display}\u201D",
       "menu.openTitle": "Open which heading?",
       "menu.openNewTabTitle": "Open which heading in a new tab?",
       // Exclusion menu
@@ -2611,7 +3173,9 @@ var require_en2 = __commonJS({
       "exclude.remove": 'Remove "{value}" from {noun}',
       "exclude.removePrefixed": 'Heading: remove "{value}" from {noun}',
       // Highlight tooltip
-      "highlight.matches": "Matches several headings: {terms}",
+      // Neutral on purpose: a duplicate can come from this plugin or from a sibling, and the
+      // reader is picking a destination, not a plugin.
+      "highlight.matches": "Several matches: {terms}",
       // Modals
       "modal.materialize.title": "Turn words into heading links",
       "modal.materialize.summary": "Reviewing {files} file(s), {replacements} replacement(s).",
@@ -2621,8 +3185,8 @@ var require_en2 = __commonJS({
       "modal.andMore": "\u2026and {n} more",
       "modal.unlink.title": "Unlink heading links",
       "modal.unlink.summary": "Reviewing {files} file(s), {links} link(s).",
-      "modal.choose.title": "Which heading?",
-      "modal.choose.body": "This word matches more than one heading.",
+      "modal.choose.title": "Which one?",
+      "modal.choose.body": "This word has more than one match.",
       "btn.apply": "Apply",
       "btn.cancel": "Cancel",
       "label.selection": "Selection",
@@ -2643,6 +3207,13 @@ var require_en2 = __commonJS({
       "notice.scopeWritten": "Wrote {links} across {files}.",
       "notice.scopeSkipped": " Skipped {n} note(s) changed since the preview.",
       "notice.indexRebuilt": "Heading index rebuilt.",
+      "notice.aliasAdded": "Heading Linker: \u201C{alias}\u201D added as an alias of \u201C{term}\u201D",
+      "notice.aliasExists": "Heading Linker: \u201C{term}\u201D already matches \u201C{alias}\u201D",
+      "notice.aliasesAdded": "Heading Linker: {aliases} added",
+      "notice.noNewAliases": "Heading Linker: no new aliases found",
+      // The index can be a moment behind the file: the heading was there when the menu opened
+      // and gone by the time the write ran.
+      "notice.headingGone": "Heading Linker: \u201C{term}\u201D is no longer in that note",
       "notice.alreadyExcluded": '"{value}" is already excluded.',
       "notice.addedToExcluded": 'Added "{value}" to {where}.',
       "notice.wasNotExcluded": '"{value}" was not excluded.',
@@ -2746,6 +3317,8 @@ var require_en2 = __commonJS({
       "set.menuExclude.desc": 'Offer "exclude word/heading" items.',
       "set.menuUnlink.name": "Unlink action",
       "set.menuUnlink.desc": 'Offer "unlink this link" on a heading link.',
+      "set.menuCollect.name": '"Collect aliases" items',
+      "set.menuCollect.desc": "Offer to collect a link\u2019s own wording as an alias of the heading it points at \u2014 on the link itself, and for a whole note from its right-click menu.",
       // Settings — maintenance
       "set.heading.maintenance": "Maintenance",
       "set.rebuild.name": "Rebuild index",
@@ -2753,8 +3326,14 @@ var require_en2 = __commonJS({
       "set.rebuild.button": "Rebuild",
       // Plurals
       "plural.term": { one: "{n} heading", other: "{n} headings" },
+      "plural.alias": { one: "{n} alias", other: "{n} aliases" },
       "plural.file": { one: "{n} file", other: "{n} files" },
-      "plural.link": { one: "{n} link", other: "{n} links" }
+      "plural.link": { one: "{n} link", other: "{n} links" },
+      "set.precedence.name": "Priority among linker plugins",
+      "set.precedence.desc": "When two linkers claim the same word or the same link, the one higher in this list wins and the other steps aside. Only this plugin\u2019s own position can be moved from here \u2014 move the others from their own settings.",
+      "set.precedence.other": "Move from that plugin\u2019s own settings",
+      "set.precedence.up": "Move up",
+      "set.precedence.down": "Move down"
     };
   }
 });
@@ -2770,6 +3349,7 @@ var require_ru2 = __commonJS({
       "cmd.unlinkThisNote": "\u0423\u0431\u0440\u0430\u0442\u044C \u0441\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438: \u044D\u0442\u0430 \u0437\u0430\u043C\u0435\u0442\u043A\u0430",
       "cmd.unlinkSelection": "\u0423\u0431\u0440\u0430\u0442\u044C \u0441\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438: \u0432\u044B\u0434\u0435\u043B\u0435\u043D\u0438\u0435",
       "cmd.unlinkAllNotes": "\u0423\u0431\u0440\u0430\u0442\u044C \u0441\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438: \u0432\u0441\u0435 \u0437\u0430\u043C\u0435\u0442\u043A\u0438",
+      "cmd.collectThisNote": "\u0421\u043E\u0431\u0440\u0430\u0442\u044C \u0430\u043B\u0438\u0430\u0441\u044B \u0438\u0437 \u0441\u0441\u044B\u043B\u043E\u043A: \u044D\u0442\u0430 \u0437\u0430\u043C\u0435\u0442\u043A\u0430",
       "cmd.rebuildIndex": "\u041F\u0435\u0440\u0435\u0441\u0442\u0440\u043E\u0438\u0442\u044C \u0438\u043D\u0434\u0435\u043A\u0441 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u0432",
       "cmd.addSource": "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u044D\u0442\u0443 \u0437\u0430\u043C\u0435\u0442\u043A\u0443 \u0432 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u0432",
       "cmd.removeSource": "\u0423\u0431\u0440\u0430\u0442\u044C \u044D\u0442\u0443 \u0437\u0430\u043C\u0435\u0442\u043A\u0443 \u0438\u0437 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u043E\u0432 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u0432",
@@ -2784,7 +3364,9 @@ var require_ru2 = __commonJS({
       "noun.folder": "\u043F\u0430\u043F\u043A\u0443",
       "scope.first": "\u043F\u0435\u0440\u0432\u043E\u0435",
       "scope.all": "\u0432\u0441\u0435",
-      "menu.unlinkThisLink": "Heading: \u0443\u0431\u0440\u0430\u0442\u044C \u044D\u0442\u0443 \u0441\u0441\u044B\u043B\u043A\u0443",
+      "menu.unlinkThisLink": "\u0423\u0431\u0440\u0430\u0442\u044C \u044D\u0442\u0443 \u0441\u0441\u044B\u043B\u043A\u0443",
+      "menu.collectThisAlias": "\u0421\u043E\u0431\u0440\u0430\u0442\u044C \u044D\u0442\u043E\u0442 \u0430\u043B\u0438\u0430\u0441",
+      "menu.collectFromNote": "\u0421\u043E\u0431\u0440\u0430\u0442\u044C \u0430\u043B\u0438\u0430\u0441\u044B \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u0432 \u0438\u0437 \u0441\u0441\u044B\u043B\u043E\u043A",
       "menu.addToSources": "Heading: \u0434\u043E\u0431\u0430\u0432\u0438\u0442\u044C {noun} \u0432 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438",
       "menu.removeFromSources": "Heading: \u0443\u0431\u0440\u0430\u0442\u044C {noun} \u0438\u0437 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u043E\u0432",
       "menu.ignoreSource": "Heading: \u0438\u0433\u043D\u043E\u0440\u0438\u0440\u043E\u0432\u0430\u0442\u044C {noun} \u043A\u0430\u043A \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A",
@@ -2793,13 +3375,13 @@ var require_ru2 = __commonJS({
       "menu.addToAlwaysExcluded": "Heading: \u0434\u043E\u0431\u0430\u0432\u0438\u0442\u044C {noun} \u0432\u043E \u0432\u0441\u0435\u0433\u0434\u0430-\u0438\u0441\u043A\u043B\u044E\u0447\u0451\u043D\u043D\u044B\u0435",
       "menu.removeFromScope": "Heading: \u0443\u0431\u0440\u0430\u0442\u044C {noun} \u0438\u0437 \u043E\u0431\u043B\u0430\u0441\u0442\u0438",
       "menu.includeInScope": "Heading: \u0432\u043A\u043B\u044E\u0447\u0438\u0442\u044C {noun} \u0432 \u043E\u0431\u043B\u0430\u0441\u0442\u044C",
-      "menu.linkToHeading": "\u0421\u0432\u044F\u0437\u0430\u0442\u044C \u0441 \u044D\u0442\u0438\u043C \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u043C",
+      "menu.linkThisWord": "\u0421\u0432\u044F\u0437\u0430\u0442\u044C \xAB{display}\xBB",
+      "menu.linkHere": "\u0421\u0432\u044F\u0437\u0430\u0442\u044C \xAB{display}\xBB \u0437\u0434\u0435\u0441\u044C",
       "menu.linkScopeThisNote": "\u0421\u0432\u044F\u0437\u0430\u0442\u044C {scope} \xAB{display}\xBB \u0432 \u044D\u0442\u043E\u0439 \u0437\u0430\u043C\u0435\u0442\u043A\u0435",
       "menu.linkScopeAllNotes": "\u0421\u0432\u044F\u0437\u0430\u0442\u044C {scope} \xAB{display}\xBB \u0432\u043E \u0432\u0441\u0435\u0445 \u0437\u0430\u043C\u0435\u0442\u043A\u0430\u0445",
       "menu.linkDisplayTo": "\u0421\u0432\u044F\u0437\u0430\u0442\u044C \xAB{display}\xBB \u0441\u2026",
       "menu.linkScopeTo": "\u0421\u0432\u044F\u0437\u0430\u0442\u044C {scope} \xAB{display}\xBB \u0441\u2026",
-      "menu.openNote": "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A",
-      "menu.openNewTab": "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A \u0432 \u043D\u043E\u0432\u043E\u0439 \u0432\u043A\u043B\u0430\u0434\u043A\u0435",
+      "menu.openThisWord": "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \xAB{display}\xBB",
       "menu.openTitle": "\u041A\u0430\u043A\u043E\u0439 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A \u043E\u0442\u043A\u0440\u044B\u0442\u044C?",
       "menu.openNewTabTitle": "\u041A\u0430\u043A\u043E\u0439 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A \u043E\u0442\u043A\u0440\u044B\u0442\u044C \u0432 \u043D\u043E\u0432\u043E\u0439 \u0432\u043A\u043B\u0430\u0434\u043A\u0435?",
       "exclude.terms": "\u0438\u0441\u043A\u043B\u044E\u0447\u0451\u043D\u043D\u044B\u0435 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438",
@@ -2807,7 +3389,7 @@ var require_ru2 = __commonJS({
       "exclude.addPrefixed": "Heading: \u0434\u043E\u0431\u0430\u0432\u0438\u0442\u044C \xAB{value}\xBB \u0432 {noun}",
       "exclude.remove": "\u0423\u0431\u0440\u0430\u0442\u044C \xAB{value}\xBB \u0438\u0437 {noun}",
       "exclude.removePrefixed": "Heading: \u0443\u0431\u0440\u0430\u0442\u044C \xAB{value}\xBB \u0438\u0437 {noun}",
-      "highlight.matches": "\u0421\u043E\u0432\u043F\u0430\u0434\u0430\u0435\u0442 \u0441 \u043D\u0435\u0441\u043A\u043E\u043B\u044C\u043A\u0438\u043C\u0438 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0430\u043C\u0438: {terms}",
+      "highlight.matches": "\u041D\u0435\u0441\u043A\u043E\u043B\u044C\u043A\u043E \u0441\u043E\u0432\u043F\u0430\u0434\u0435\u043D\u0438\u0439: {terms}",
       "modal.materialize.title": "\u041F\u0440\u0435\u0432\u0440\u0430\u0442\u0438\u0442\u044C \u0441\u043B\u043E\u0432\u0430 \u0432 \u0441\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438",
       "modal.materialize.summary": "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430: \u0444\u0430\u0439\u043B\u043E\u0432 \u2014 {files}, \u0437\u0430\u043C\u0435\u043D \u2014 {replacements}.",
       "modal.materialize.ambiguous": "{n} \u0441\u043B\u043E\u0432(\u043E) \u0441\u043E\u0432\u043F\u0430\u0434\u0430\u0435\u0442 \u0441 \u043D\u0435\u0441\u043A\u043E\u043B\u044C\u043A\u0438\u043C\u0438 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0430\u043C\u0438 \u2014 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0438\u043B\u0438 \u043F\u0440\u043E\u043F\u0443\u0441\u0442\u0438\u0442\u0435:",
@@ -2816,8 +3398,8 @@ var require_ru2 = __commonJS({
       "modal.andMore": "\u2026\u0438 \u0435\u0449\u0451 {n}",
       "modal.unlink.title": "\u0423\u0431\u0440\u0430\u0442\u044C \u0441\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438",
       "modal.unlink.summary": "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430: \u0444\u0430\u0439\u043B\u043E\u0432 \u2014 {files}, \u0441\u0441\u044B\u043B\u043E\u043A \u2014 {links}.",
-      "modal.choose.title": "\u041A\u0430\u043A\u043E\u0439 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A?",
-      "modal.choose.body": "\u042D\u0442\u043E \u0441\u043B\u043E\u0432\u043E \u0441\u043E\u0432\u043F\u0430\u0434\u0430\u0435\u0442 \u0441 \u043D\u0435\u0441\u043A\u043E\u043B\u044C\u043A\u0438\u043C\u0438 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0430\u043C\u0438.",
+      "modal.choose.title": "\u041A\u0430\u043A\u043E\u0435 \u0438\u0437 \u0441\u043E\u0432\u043F\u0430\u0434\u0435\u043D\u0438\u0439?",
+      "modal.choose.body": "\u0423 \u044D\u0442\u043E\u0433\u043E \u0441\u043B\u043E\u0432\u0430 \u043D\u0435\u0441\u043A\u043E\u043B\u044C\u043A\u043E \u0441\u043E\u0432\u043F\u0430\u0434\u0435\u043D\u0438\u0439.",
       "btn.apply": "\u041F\u0440\u0438\u043C\u0435\u043D\u0438\u0442\u044C",
       "btn.cancel": "\u041E\u0442\u043C\u0435\u043D\u0430",
       "label.selection": "\u0412\u044B\u0434\u0435\u043B\u0435\u043D\u0438\u0435",
@@ -2837,6 +3419,11 @@ var require_ru2 = __commonJS({
       "notice.scopeWritten": "\u0417\u0430\u043F\u0438\u0441\u0430\u043D\u043E {links} \u0432 {files}.",
       "notice.scopeSkipped": " \u041F\u0440\u043E\u043F\u0443\u0449\u0435\u043D\u043E \u0437\u0430\u043C\u0435\u0442\u043E\u043A, \u0438\u0437\u043C\u0435\u043D\u0451\u043D\u043D\u044B\u0445 \u043F\u043E\u0441\u043B\u0435 \u043F\u0440\u0435\u0432\u044C\u044E: {n}.",
       "notice.indexRebuilt": "\u0418\u043D\u0434\u0435\u043A\u0441 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u0432 \u043F\u0435\u0440\u0435\u0441\u0442\u0440\u043E\u0435\u043D.",
+      "notice.aliasAdded": "Heading Linker: \xAB{alias}\xBB \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D \u043A\u0430\u043A \u0430\u043B\u0438\u0430\u0441 \xAB{term}\xBB",
+      "notice.aliasExists": "Heading Linker: \xAB{term}\xBB \u0443\u0436\u0435 \u0441\u043E\u0432\u043F\u0430\u0434\u0430\u0435\u0442 \u0441 \xAB{alias}\xBB",
+      "notice.aliasesAdded": "Heading Linker: \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u043E {aliases}",
+      "notice.noNewAliases": "Heading Linker: \u043D\u043E\u0432\u044B\u0445 \u0430\u043B\u0438\u0430\u0441\u043E\u0432 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E",
+      "notice.headingGone": "Heading Linker: \xAB{term}\xBB \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435\u0442 \u0432 \u044D\u0442\u043E\u0439 \u0437\u0430\u043C\u0435\u0442\u043A\u0435",
       "notice.alreadyExcluded": "\xAB{value}\xBB \u0443\u0436\u0435 \u0438\u0441\u043A\u043B\u044E\u0447\u0435\u043D\u043E.",
       "notice.addedToExcluded": "\xAB{value}\xBB \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u043E \u0432 {where}.",
       "notice.wasNotExcluded": "\xAB{value}\xBB \u043D\u0435 \u0431\u044B\u043B\u043E \u0438\u0441\u043A\u043B\u044E\u0447\u0435\u043D\u043E.",
@@ -2933,13 +3520,21 @@ var require_ru2 = __commonJS({
       "set.menuExclude.desc": "\u041F\u043E\u043A\u0430\u0437\u044B\u0432\u0430\u0442\u044C \u043F\u0443\u043D\u043A\u0442\u044B \xAB\u0438\u0441\u043A\u043B\u044E\u0447\u0438\u0442\u044C \u0441\u043B\u043E\u0432\u043E/\u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A\xBB.",
       "set.menuUnlink.name": "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u0440\u0430\u0437\u0432\u044F\u0437\u044B\u0432\u0430\u043D\u0438\u044F",
       "set.menuUnlink.desc": "\u041F\u043E\u043A\u0430\u0437\u044B\u0432\u0430\u0442\u044C \xAB\u0443\u0431\u0440\u0430\u0442\u044C \u044D\u0442\u0443 \u0441\u0441\u044B\u043B\u043A\u0443\xBB \u043D\u0430 \u0441\u0441\u044B\u043B\u043A\u0435-\u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0435.",
+      "set.menuCollect.name": "\u041F\u0443\u043D\u043A\u0442\u044B \xAB\u0421\u043E\u0431\u0440\u0430\u0442\u044C \u0430\u043B\u0438\u0430\u0441\u044B\xBB",
+      "set.menuCollect.desc": "\u041F\u0440\u0435\u0434\u043B\u0430\u0433\u0430\u0442\u044C \u0441\u043E\u0431\u0440\u0430\u0442\u044C \u0442\u0435\u043A\u0441\u0442 \u0441\u0441\u044B\u043B\u043A\u0438 \u043A\u0430\u043A \u0430\u043B\u0438\u0430\u0441 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0430 \u2014 \u043D\u0430 \u0441\u0430\u043C\u043E\u0439 \u0441\u0441\u044B\u043B\u043A\u0435 \u0438 \u0434\u043B\u044F \u0432\u0441\u0435\u0439 \u0437\u0430\u043C\u0435\u0442\u043A\u0438 \u0438\u0437 \u0435\u0451 \u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442\u043D\u043E\u0433\u043E \u043C\u0435\u043D\u044E.",
       "set.heading.maintenance": "\u041E\u0431\u0441\u043B\u0443\u0436\u0438\u0432\u0430\u043D\u0438\u0435",
       "set.rebuild.name": "\u041F\u0435\u0440\u0435\u0441\u0442\u0440\u043E\u0438\u0442\u044C \u0438\u043D\u0434\u0435\u043A\u0441",
       "set.rebuild.desc": "\u0417\u0430\u043D\u043E\u0432\u043E \u043F\u0440\u043E\u0441\u043A\u0430\u043D\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0444\u0430\u0439\u043B\u044B-\u0433\u043B\u043E\u0441\u0441\u0430\u0440\u0438\u0438 \u043D\u0430 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438.",
       "set.rebuild.button": "\u041F\u0435\u0440\u0435\u0441\u0442\u0440\u043E\u0438\u0442\u044C",
       "plural.term": { one: "{n} \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A", few: "{n} \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0430", many: "{n} \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u0432", other: "{n} \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0430" },
+      "plural.alias": { one: "{n} \u0430\u043B\u0438\u0430\u0441", few: "{n} \u0430\u043B\u0438\u0430\u0441\u0430", many: "{n} \u0430\u043B\u0438\u0430\u0441\u043E\u0432", other: "{n} \u0430\u043B\u0438\u0430\u0441\u0430" },
       "plural.file": { one: "{n} \u0444\u0430\u0439\u043B", few: "{n} \u0444\u0430\u0439\u043B\u0430", many: "{n} \u0444\u0430\u0439\u043B\u043E\u0432", other: "{n} \u0444\u0430\u0439\u043B\u0430" },
-      "plural.link": { one: "{n} \u0441\u0441\u044B\u043B\u043A\u0430", few: "{n} \u0441\u0441\u044B\u043B\u043A\u0438", many: "{n} \u0441\u0441\u044B\u043B\u043E\u043A", other: "{n} \u0441\u0441\u044B\u043B\u043A\u0438" }
+      "plural.link": { one: "{n} \u0441\u0441\u044B\u043B\u043A\u0430", few: "{n} \u0441\u0441\u044B\u043B\u043A\u0438", many: "{n} \u0441\u0441\u044B\u043B\u043E\u043A", other: "{n} \u0441\u0441\u044B\u043B\u043A\u0438" },
+      "set.precedence.name": "\u041F\u0440\u0438\u043E\u0440\u0438\u0442\u0435\u0442 \u0441\u0440\u0435\u0434\u0438 \u043F\u043B\u0430\u0433\u0438\u043D\u043E\u0432-\u043B\u0438\u043D\u043A\u0435\u0440\u043E\u0432",
+      "set.precedence.desc": "\u041A\u043E\u0433\u0434\u0430 \u0434\u0432\u0430 \u043B\u0438\u043D\u043A\u0435\u0440\u0430 \u043F\u0440\u0435\u0442\u0435\u043D\u0434\u0443\u044E\u0442 \u043D\u0430 \u043E\u0434\u043D\u043E \u0441\u043B\u043E\u0432\u043E \u0438\u043B\u0438 \u043E\u0434\u043D\u0443 \u0441\u0441\u044B\u043B\u043A\u0443, \u0432\u044B\u0438\u0433\u0440\u044B\u0432\u0430\u0435\u0442 \u0442\u043E\u0442, \u043A\u0442\u043E \u0432\u044B\u0448\u0435 \u0432 \u0441\u043F\u0438\u0441\u043A\u0435, \u043E\u0441\u0442\u0430\u043B\u044C\u043D\u044B\u0435 \u0443\u0441\u0442\u0443\u043F\u0430\u044E\u0442. \u041E\u0442\u0441\u044E\u0434\u0430 \u043C\u043E\u0436\u043D\u043E \u0434\u0432\u0438\u0433\u0430\u0442\u044C \u0442\u043E\u043B\u044C\u043A\u043E \u044D\u0442\u043E\u0442 \u043F\u043B\u0430\u0433\u0438\u043D \u2014 \u043E\u0441\u0442\u0430\u043B\u044C\u043D\u044B\u0435 \u0438\u0437 \u0438\u0445 \u0441\u043E\u0431\u0441\u0442\u0432\u0435\u043D\u043D\u044B\u0445 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A.",
+      "set.precedence.other": "\u041F\u0435\u0440\u0435\u043C\u0435\u0441\u0442\u0438\u0442\u044C \u0438\u0437 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043A \u0442\u043E\u0433\u043E \u043F\u043B\u0430\u0433\u0438\u043D\u0430",
+      "set.precedence.up": "\u0412\u044B\u0448\u0435",
+      "set.precedence.down": "\u041D\u0438\u0436\u0435"
     };
   }
 });
@@ -2954,8 +3549,11 @@ var { HeadingLinkerSettingTab } = require_settings_tab();
 var matcher = require_matcher();
 var highlight = require_highlight();
 var materialize = require_materialize();
+var api = require_api();
 var { HeadingSuggest, suggestAvailable } = require_heading_suggest();
 var { initI18n, t, plural } = require_i18n();
+var { menuSection } = require_menu();
+var aliases = require_aliases();
 function parseHeadingAliases(text, headings) {
   const lines = text.split("\n");
   const map = /* @__PURE__ */ new Map();
@@ -3006,10 +3604,12 @@ var HeadingLinkerPlugin = class extends Plugin {
     this.terms = [];
     this.headingFingerprints = /* @__PURE__ */ new Map();
     this.aliasCache = /* @__PURE__ */ new Map();
+    this._indexListeners = /* @__PURE__ */ new Set();
     await this.loadLanguages();
     this.rebuildIndex();
     this.scheduleRebuild = debounce(() => {
       this.rebuildIndex();
+      this.notifyIndexChange();
       this.rerenderViews();
       this.updateStatusBar();
     }, 600, true);
@@ -3061,13 +3661,57 @@ var HeadingLinkerPlugin = class extends Plugin {
         this.updateStatusBarDebounced();
     }));
     this.registerEvent(this.app.workspace.on("editor-menu", (menu, editor) => {
+      const file = this.app.workspace.getActiveFile();
+      const sourcePath = file ? file.path : "";
       const link = this.headingLinkAt(editor);
-      if (this.settings.menuExclude && link) {
-        this.addExclusionMenuItem(menu, this.labelOf(link.linktext), "Heading: ");
+      const excludeItem = (value) => {
+        if (!this.settings.menuExclude)
+          return;
+        this.addExclusionMenuItem(menu, this.labelOf(value));
+      };
+      if (link) {
+        if (this.settings.menuUnlink) {
+          menu.addItem((i) => i.setTitle(t("menu.unlinkThisLink")).setIcon("unlink").onClick(() => this.unlinkLinkAt(editor, link)));
+        }
+        if (this.settings.menuCollect && link.targetFile && link.display !== this.labelOf(link.linktext)) {
+          menu.addItem((i) => i.setTitle(t("menu.collectThisAlias")).setIcon("download").onClick(() => this.collectAliasFromLink(link)));
+        }
+        excludeItem(link.linktext);
+        return;
       }
-      if (this.settings.menuUnlink && link) {
-        menu.addItem((i) => i.setTitle(t("menu.unlinkThisLink")).setIcon("unlink").onClick(() => this.unlinkLinkAt(editor, link)));
+      const hit = this.matchAtCursor(editor);
+      if (!hit) {
+        const word = this.wordAtCursor(editor);
+        if (word)
+          excludeItem(word.linktext);
+        return;
       }
+      const display = hit.match.display;
+      const linktext = hit.match.linktext;
+      const candidates = () => this.cursorCandidates(hit, sourcePath, false);
+      if (file && this.settings.menuTurnInto) {
+        const scope = this.settings.linkFirstOnly ? t("scope.first") : t("scope.all");
+        const linkGroup = menuSection(menu, t("menu.linkThisWord", { display }), true, "link");
+        linkGroup.addItem((i) => i.setTitle(t("menu.linkHere", { display })).setIcon("link").onClick(() => this.chooseTerm(
+          candidates(),
+          t("menu.linkDisplayTo", { display }),
+          (c) => this.materializeSingle(file, linktext, display, editor.posToOffset({ line: hit.line, ch: hit.match.start }), 0, c)
+        )));
+        linkGroup.addItem((i) => i.setTitle(t("menu.linkScopeThisNote", { scope, display })).setIcon("links-coming-in").onClick(() => this.chooseTerm(
+          candidates(),
+          t("menu.linkScopeTo", { scope, display }),
+          (c) => this.materializeTerm(file, linktext, c)
+        )));
+        linkGroup.addItem((i) => i.setTitle(t("menu.linkScopeAllNotes", { scope, display })).setIcon("links-going-out").onClick(() => this.chooseTerm(
+          candidates(),
+          t("menu.linkScopeTo", { scope, display }),
+          (c) => this.materializeTermScope(linktext, c)
+        )));
+      }
+      if (this.settings.menuOpen) {
+        menu.addItem((i) => i.setTitle(t("menu.openThisWord", { display })).setIcon("file-text").onClick(() => this.chooseTerm(candidates(), t("menu.openTitle"), (c) => this.openTerm(c, sourcePath, false))));
+      }
+      excludeItem(linktext);
     }));
     this.registerEvent(this.app.workspace.on("file-menu", (menu, file, source) => {
       if (source === "link-context-menu")
@@ -3098,6 +3742,9 @@ var HeadingLinkerPlugin = class extends Plugin {
         else
           item(t("menu.includeInScope", { noun }), "folder-plus", "scopeFolders", true);
       }
+      if (this.settings.menuCollect && !isFolder) {
+        menu.addItem((i) => i.setTitle(t("menu.collectFromNote")).setIcon("download").onClick(() => this.collectAliasesFromNote(file)));
+      }
     }));
     this.app.workspace.registerHoverLinkSource("heading-linker", { display: "Heading Linker", defaultMod: true });
     this.registerMarkdownPostProcessor((el, ctx) => this.processReadingMode(el, ctx));
@@ -3108,6 +3755,15 @@ var HeadingLinkerPlugin = class extends Plugin {
     this.addCommand({ id: "unlink-current", name: t("cmd.unlinkThisNote"), callback: () => this.unlinkCurrent() });
     this.addCommand({ id: "unlink-selection", name: t("cmd.unlinkSelection"), editorCallback: (editor) => this.unlinkSelection(editor) });
     this.addCommand({ id: "unlink-scope", name: t("cmd.unlinkAllNotes"), callback: () => this.unlinkScope() });
+    this.addCommand({
+      id: "collect-current",
+      name: t("cmd.collectThisNote"),
+      callback: () => {
+        const f = this.app.workspace.getActiveFile();
+        if (f)
+          this.collectAliasesFromNote(f);
+      }
+    });
     this.addCommand({ id: "rebuild-index", name: t("cmd.rebuildIndex"), callback: () => {
       this.rebuildIndex();
       new Notice(t("notice.indexRebuilt"));
@@ -3123,6 +3779,7 @@ var HeadingLinkerPlugin = class extends Plugin {
     if (suggestAvailable())
       this.registerEditorSuggest(new HeadingSuggest(this.app, this));
     this.addSettingTab(new HeadingLinkerSettingTab(this.app, this));
+    this.api = this.buildApi();
   }
   async saveSettings() {
     await this.saveData(this.settings);
@@ -3251,8 +3908,8 @@ var HeadingLinkerPlugin = class extends Plugin {
   // Fingerprint of what defines a file's terms — its headings and their aliases. The
   // 'changed' handler compares against this to skip rebuilds on unrelated body edits.
   fileFingerprint(file) {
-    const aliases = this.aliasCache.get(file.path);
-    return JSON.stringify({ h: this.headingsOf(file), a: aliases ? [...aliases] : [] });
+    const aliases2 = this.aliasCache.get(file.path);
+    return JSON.stringify({ h: this.headingsOf(file), a: aliases2 ? [...aliases2] : [] });
   }
   // Read and cache one glossary file's `%%` alias comments. The only place a body is
   // read; called on first index and when the file changes — never during a plain rebuild.
@@ -3465,5 +4122,5 @@ var HeadingLinkerPlugin = class extends Plugin {
     });
   }
 };
-Object.assign(HeadingLinkerPlugin.prototype, matcher, highlight, materialize);
+Object.assign(HeadingLinkerPlugin.prototype, matcher, highlight, materialize, aliases, api);
 module.exports = HeadingLinkerPlugin;

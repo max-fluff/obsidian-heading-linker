@@ -1,8 +1,9 @@
 'use strict';
 
-const { Menu, Notice } = require('obsidian');
+const { Notice } = require('obsidian');
 const { splitLines } = require('./shared/markdown');
 const { MaterializePreviewModal, UnlinkPreviewModal, ChooseTermModal } = require('./modals');
+const { candidatesFor } = require('./shared/discover');
 const { t, plural } = require('./shared/i18n');
 
 // Turning words into heading links and reverting them. Mixed into the plugin prototype.
@@ -152,52 +153,61 @@ module.exports = {
     this.openUnlinkPreview(files, (results) => this.writeScopeResults(results));
   },
 
+  // The highlighted (not yet linked) match under the cursor, with whatever the other
+  // linkers would offer at the same spot, or null.
+  //
+  // It runs through ownSpans, so on a word several linkers know only the owner finds
+  // anything here — which is what keeps one "Link…" item in the menu instead of one per
+  // plugin. The others stay quiet and their readings ride along as candidates.
+  matchAtCursor(editor) {
+    const head = editor.getCursor('head');
+    const line = editor.getLine(head.line);
+    if (!line) return null;
+    const currentFile = this.currentFileBase(this.app.workspace.getActiveFile() ? this.app.workspace.getActiveFile().path : '');
+    const matches = this.ownSpans(line, this.findMatches(line, currentFile, { protect: true }));
+    const hit = matches.find((m) => head.ch >= m.start && head.ch <= m.end);
+    if (!hit) return null;
+    const foreign = candidatesFor(this.yieldedIn(line), hit.start, hit.end);
+    return { match: hit, foreign, line: head.line };
+  },
+
+  // The match under the cursor as we see it, ownership aside — so null only when this word
+  // means nothing to us at all.
+  //
+  // Used for excluding a word, and only for that. Excluding is a setting of *this* plugin:
+  // it stops us matching the word and says nothing about what the sibling does. Gating it on
+  // ownership hid it exactly where it is most wanted — on a word both linkers match, where
+  // the loser is drawing nothing yet still matches, and the settings tab was the only way
+  // left to tell it to stop.
+  wordAtCursor(editor) {
+    const head = editor.getCursor('head');
+    const line = editor.getLine(head.line);
+    if (!line) return null;
+    const currentFile = this.currentFileBase(this.app.workspace.getActiveFile() ? this.app.workspace.getActiveFile().path : '');
+    const matches = this.findMatches(line, currentFile, { protect: true });
+    return matches.find((m) => head.ch >= m.start && head.ch <= m.end) || null;
+  },
+
+  // Every reading of the match under the cursor: ours, our own same-named alternatives, and
+  // the ones other linkers stood down on. What the menu offers to link or open.
+  cursorCandidates(hit, sourcePath, newTab) {
+    const own = [hit.match.linktext, ...(hit.match.alts || [])];
+    const foreign = hit.foreign.map((c) => ({ ...c, open: () => c.open(sourcePath, newTab) }));
+    return [...own, ...foreign];
+  },
+
   chooseTerm(candidates, title, action) {
     const list = (candidates || []).filter(Boolean);
-    if (list.length <= 1) return action(list[0]);
+    // A lone candidate needs no dialog. It can still be another linker's, in which case it
+    // opens itself rather than going through our own resolver.
+    if (list.length <= 1) {
+      const only = list[0];
+      if (only && typeof only === 'object') return only.open();
+      return action(only);
+    }
     new ChooseTermModal(this.app, { title, terms: list, onChoose: action }).open();
   },
 
-  showLinkMenu(evt, linktext, display, file, nearOffset, occurrence, alts) {
-    const sourcePath = file ? file.path : '';
-    const candidates = (alts && alts.length) ? [linktext, ...alts] : [linktext];
-    const label = this.labelOf(linktext);
-    const groups = [];
-
-    if (file && this.settings.menuTurnInto) {
-      const scope = this.settings.linkFirstOnly ? t('scope.first') : t('scope.all');
-      groups.push((menu) => {
-        menu.addItem((i) => i.setTitle(t('menu.linkToHeading')).setIcon('link')
-          .onClick(() => this.chooseTerm(candidates, t('menu.linkDisplayTo', { display }),
-            (c) => this.materializeSingle(file, linktext, display, nearOffset, occurrence, c))));
-        menu.addItem((i) => i.setTitle(t('menu.linkScopeThisNote', { scope, display })).setIcon('links-coming-in')
-          .onClick(() => this.chooseTerm(candidates, t('menu.linkScopeTo', { scope, display }),
-            (c) => this.materializeTerm(file, linktext, c))));
-        menu.addItem((i) => i.setTitle(t('menu.linkScopeAllNotes', { scope, display })).setIcon('links-going-out')
-          .onClick(() => this.chooseTerm(candidates, t('menu.linkScopeTo', { scope, display }),
-            (c) => this.materializeTermScope(linktext, c))));
-      });
-    }
-    if (this.settings.menuExclude) {
-      // Exclude the heading itself: drops the term (and all its word forms) from the index.
-      groups.push((menu) => this.addExclusionMenuItem(menu, label));
-    }
-    if (this.settings.menuOpen) {
-      groups.push((menu) => {
-        menu.addItem((i) => i.setTitle(t('menu.openNote')).setIcon('file-text')
-          .onClick(() => this.chooseTerm(candidates, t('menu.openTitle'), (c) => this.openTerm(c, sourcePath, false))));
-        menu.addItem((i) => i.setTitle(t('menu.openNewTab')).setIcon('file-plus')
-          .onClick(() => this.chooseTerm(candidates, t('menu.openNewTabTitle'), (c) => this.openTerm(c, sourcePath, true))));
-      });
-    }
-
-    if (!groups.length) return false;
-    const menu = new Menu();
-    groups.forEach((group, i) => { if (i) menu.addSeparator(); group(menu); });
-    evt.preventDefault();
-    menu.showAtMouseEvent(evt);
-    return true;
-  },
 
   isExcluded(value) {
     const v = value.toLowerCase();

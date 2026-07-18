@@ -4,6 +4,40 @@ const { EditorSuggest } = require('obsidian');
 const { t } = require('./shared/i18n');
 const { inTableCell } = require('./shared/markdown');
 
+// The candidates for a typed word, ranked, or an empty list. Kept out of the class and free
+// of editor state: onTrigger needs the answer before it can decide whether to claim the
+// popup, and it is the piece worth testing on its own.
+function collectSuggestions(plugin, query, ownFile) {
+  const qLower = query.toLowerCase();
+  const byLink = new Map();
+
+  // 'form' matches: the typed word is an inflection of a single-word heading.
+  const seenCand = new Set();
+  for (const key of plugin.keysFor(query)) {
+    const bucket = plugin.index.byKey.get(key);
+    if (!bucket) continue;
+    for (const c of bucket) {
+      if (c.wordCount !== 1 || seenCand.has(c) || c.fileBase === ownFile) continue;
+      seenCand.add(c);
+      if (!byLink.has(c.linktext)) byLink.set(c.linktext, { linktext: c.linktext, label: c.label, fileBase: c.fileBase, kind: 'form' });
+    }
+  }
+
+  // 'prefix' matches: the typed text starts a heading or one of its aliases.
+  for (const term of plugin.terms || []) {
+    if (byLink.has(term.linktext) || term.fileBase === ownFile) continue;
+    let form = null;
+    if (term.label.toLowerCase().startsWith(qLower)) form = term.label;
+    else if (term.aliases) form = term.aliases.find((a) => a.toLowerCase().startsWith(qLower));
+    if (form) byLink.set(term.linktext, { linktext: term.linktext, label: term.label, fileBase: term.fileBase, kind: 'prefix', matchedForm: form });
+  }
+
+  const items = [...byLink.values()];
+  const rank = (it) => (it.kind === 'form' ? 0 : 1);
+  items.sort((a, b) => rank(a) - rank(b) || a.label.length - b.label.length || a.linktext.localeCompare(b.linktext));
+  return items.slice(0, 8);
+}
+
 // Inline autocomplete: while typing in an in-scope note, offer to insert a link to a
 // heading. Two kinds of candidate:
 //   - 'form'   — the typed word is an inflection of a heading (same engine as the
@@ -37,43 +71,29 @@ class HeadingSuggest extends EditorSuggest {
     const off = editor.posToOffset(cursor);
     if (plugin.isProtectedAt(editor.getValue(), off)) return null;
 
+    // Having nothing to offer must not take the popup slot. Obsidian hands the popup to the
+    // first suggester whose onTrigger returns a context and never asks the rest, so claiming
+    // every word would silence a sibling linker that does know this one. The candidates are
+    // built here rather than in getSuggestions so the answer is known before we claim.
+    const items = collectSuggestions(plugin, query, this.ownFileBase());
+    if (!items.length) return null;
+    this.cached = { query, items };
+
     return { start: { line: cursor.line, ch: cursor.ch - query.length }, end: cursor, query };
   }
 
+  // The note being typed in, when it is itself a heading source — its own headings are
+  // never offered, the same exclusion the highlighter makes.
+  ownFileBase() {
+    const active = this.plugin.app.workspace.getActiveFile();
+    return active ? this.plugin.currentFileBase(active.path) : null;
+  }
+
   getSuggestions(context) {
-    const plugin = this.plugin;
-    const q = context.query;
-    const qLower = q.toLowerCase();
-    const byLink = new Map();
-    // Never suggest linking a heading to itself from inside its own file.
-    const active = plugin.app.workspace.getActiveFile();
-    const ownFile = active ? plugin.currentFileBase(active.path) : null;
-
-    // 'form' matches: the typed word is an inflection of a single-word heading.
-    const seenCand = new Set();
-    for (const key of plugin.keysFor(q)) {
-      const bucket = plugin.index.byKey.get(key);
-      if (!bucket) continue;
-      for (const c of bucket) {
-        if (c.wordCount !== 1 || seenCand.has(c) || c.fileBase === ownFile) continue;
-        seenCand.add(c);
-        if (!byLink.has(c.linktext)) byLink.set(c.linktext, { linktext: c.linktext, label: c.label, fileBase: c.fileBase, kind: 'form' });
-      }
-    }
-
-    // 'prefix' matches: the typed text starts a heading or one of its aliases.
-    for (const term of plugin.terms || []) {
-      if (byLink.has(term.linktext) || term.fileBase === ownFile) continue;
-      let form = null;
-      if (term.label.toLowerCase().startsWith(qLower)) form = term.label;
-      else if (term.aliases) form = term.aliases.find((a) => a.toLowerCase().startsWith(qLower));
-      if (form) byLink.set(term.linktext, { linktext: term.linktext, label: term.label, fileBase: term.fileBase, kind: 'prefix', matchedForm: form });
-    }
-
-    const items = [...byLink.values()];
-    const rank = (it) => (it.kind === 'form' ? 0 : 1);
-    items.sort((a, b) => rank(a) - rank(b) || a.label.length - b.label.length || a.linktext.localeCompare(b.linktext));
-    return items.slice(0, 8);
+    // onTrigger already built these to decide whether to trigger at all; recompute only if
+    // something moved on between the two calls.
+    if (this.cached && this.cached.query === context.query) return this.cached.items;
+    return collectSuggestions(this.plugin, context.query, this.ownFileBase());
   }
 
   renderSuggestion(item, el) {
@@ -102,4 +122,4 @@ class HeadingSuggest extends EditorSuggest {
 
 const suggestAvailable = () => typeof EditorSuggest === 'function';
 
-module.exports = { HeadingSuggest, suggestAvailable };
+module.exports = { HeadingSuggest, suggestAvailable, collectSuggestions };
