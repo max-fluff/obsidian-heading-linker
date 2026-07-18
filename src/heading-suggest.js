@@ -96,10 +96,8 @@ class HeadingSuggest extends EditorSuggest {
     const off = editor.posToOffset(cursor);
     if (plugin.isProtectedAt(editor.getValue(), off)) return null;
 
-    // Having nothing to offer must not take the popup slot. Obsidian hands the popup to the
-    // first suggester whose onTrigger returns a context and never asks the rest, so claiming
-    // every word would silence a sibling linker that does know this one. The candidates are
-    // built here rather than in getSuggestions so the answer is known before we claim.
+    // Built here rather than in getSuggestions: claiming the popup with nothing to offer
+    // would silence a sibling suggester that does know this word.
     const items = this.merged(query);
     if (!items.length) return null;
     this.cached = { query, items };
@@ -128,12 +126,9 @@ class HeadingSuggest extends EditorSuggest {
 
   renderSuggestion(item, el) {
     el.addClass('heading-suggestion');
-    // A sibling's candidate is drawn exactly like our own. The reader is choosing a
-    // destination, not a plugin — the same reason the collision modal carries no plugin
-    // names either.
+    // A sibling's candidate draws exactly like our own: the reader is choosing a
+    // destination, not a plugin.
     el.createSpan({ cls: 'heading-suggestion-title', text: item.label });
-    // The source file both explains the target and tells apart same-named headings;
-    // an alias match also shows which wording matched.
     const note = item.insert ? item.note : noteFor(item);
     if (note) el.createSpan({ cls: 'heading-suggestion-note', text: note });
   }

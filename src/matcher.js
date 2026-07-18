@@ -3,19 +3,13 @@
 const { splitLines } = require('./shared/markdown');
 const { createMatcher } = require('./shared/prose/matcher');
 
-// Term index + matching engine. Mixed into the plugin prototype.
-//
-// The scan itself lives in shared/prose/matcher.js — it is the same one the glossary linker
-// runs, so a word means the same thing to both. What stays here is what is genuinely ours:
-// a term is a heading inside a source file, and it has two faces the rest of the plugin
-// keeps distinct:
+// Term index + matching engine. Mixed into the plugin prototype; the scan itself lives in
+// shared/prose/matcher.js. A term has two faces the rest of the plugin keeps distinct:
 //   label    — the heading text, what the reader sees as the link caption;
 //   linktext — "Basename#Heading", what Obsidian resolves the link against.
 // Identity, dedup and collisions are keyed on linktext: the same heading text in two
 // different files is two different terms and surfaces as an ambiguous match.
 const core = createMatcher({
-  // Two different strings here, unlike the glossary: a heading is identified by its full
-  // linktext, but "is this the note's own term?" is a question about the file it lives in.
   idOf: (c) => c.linktext,
   selfIdOf: (c) => c.fileBase,
   fieldsOf: (c) => ({ linktext: c.linktext, label: c.label }),

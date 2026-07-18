@@ -6,7 +6,7 @@
 // that matter are the ones where it must NOT write: a heading that has gone, an alias
 // already present, a comment belonging to the section below.
 
-const { describe, it, assert } = require('./harness');
+const { describe, it, assert } = require('../src/shared/testing/harness');
 const { _addAliasesToHeading: add, _headingRegion: region } = require('../src/aliases');
 
 const lines = (s) => s.split('\n');

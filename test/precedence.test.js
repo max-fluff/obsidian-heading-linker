@@ -3,7 +3,7 @@
 // The priority-order setting. Two things matter beyond it not throwing: it stays invisible in
 // a vault with one linker installed, and moving a row writes only our own number.
 
-const { describe, it, assert } = require('./harness');
+const { describe, it, assert } = require('../src/shared/testing/harness');
 const { obsidianStub } = require('./stubs/app');
 const { renderPrecedence, precedenceForIndex, rankedLinkers } = require('../src/shared/precedence');
 

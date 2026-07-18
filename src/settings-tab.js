@@ -1,7 +1,7 @@
 'use strict';
 
 const { PluginSettingTab, Setting, Notice } = require('obsidian');
-const { PathSuggest, folderSuggestAvailable } = require('./folder-suggest');
+const { PathSuggest, folderSuggestAvailable } = require('./shared/prose/folder-suggest');
 const { sanitizeFolder } = require('./constants');
 const { renderFolderList } = require('./shared/folder-list');
 const { t, plural } = require('./shared/i18n');

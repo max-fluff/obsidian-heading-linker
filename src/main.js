@@ -231,16 +231,11 @@ class HeadingLinkerPlugin extends Plugin {
 
     // defaultMod: true → previews honour the Page Preview modifier setting, same as real links.
     this.app.workspace.registerHoverLinkSource('heading-linker', { display: 'Heading Linker', defaultMod: true });
-    // A second source for the rows of the duplicate list, and the only difference is
-    // defaultMod. Opening the list is already a deliberate act, so asking for the modifier
-    // again on the row inside it would be asking twice for one decision. Registered rather
-    // than faked by handing Page Preview an event with the modifier flags flipped.
+    // The duplicate list's rows preview on plain hover: opening the list was already the
+    // deliberate act, so the modifier is not asked for twice.
     this.app.workspace.registerHoverLinkSource('heading-linker-choice', { display: 'Heading Linker', defaultMod: false });
 
-    // Hovering a word that matches several headings lists them instead of previewing one of
-    // them at random; each row previews itself through Obsidian's own page preview.
-    // It owns a div in document.body, so it is registered for teardown rather than left to
-    // the plugin unloading around it.
+    // Owns a div in document.body, so it is registered for teardown.
     this.choices = new ChoicePopover({
       cls: 'heading',
       title: t('modal.choose.title'),
@@ -537,14 +532,11 @@ class HeadingLinkerPlugin extends Plugin {
     return f ? f.path : '';
   }
 
-  // `hoverParent` decides how long the preview lives. It is normally the plugin, but the
-  // duplicate list passes its own component so the preview it opens dies with the list —
-  // the same arrangement Obsidian uses for a preview opened from inside a preview.
+  // `hoverParent` decides how long the preview lives: normally the plugin, but the duplicate
+  // list passes its own component so the preview it opens dies with the list.
   hoverTerm(event, targetEl, linktext, sourcePath, hoverParent) {
     this.app.workspace.trigger('hover-link', {
       event,
-      // A row of the duplicate list previews on plain hover; a word in the text follows the
-      // app's own rule for its render mode.
       source: hoverParent ? 'heading-linker-choice' : 'heading-linker',
       hoverParent: hoverParent || this,
       targetEl,

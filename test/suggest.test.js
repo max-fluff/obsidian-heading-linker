@@ -5,7 +5,7 @@
 // suggester that claims. Returning candidates for a word we don't know would silence a
 // sibling linker that does.
 
-const { describe, it, assert } = require('./harness');
+const { describe, it, assert } = require('../src/shared/testing/harness');
 const { collectSuggestions } = require('../src/heading-suggest');
 const matcher = require('../src/matcher');
 const en = require('../src/shared/morphology/languages/en.js');

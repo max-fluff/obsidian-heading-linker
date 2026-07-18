@@ -4,7 +4,7 @@
 // planned extraction of a shared matcher core, so they lean on observable results
 // (what matched, where, which link) rather than on internals.
 
-const { describe, it, assert } = require('./harness');
+const { describe, it, assert } = require('../src/shared/testing/harness');
 const matcher = require('../src/matcher');
 const en = require('../src/shared/morphology/languages/en.js');
 

@@ -1,14 +1,10 @@
 'use strict';
 
-// The list of what an ambiguous word could mean.
-//
-// It renders no previews of its own: each row asks Obsidian for its ordinary page preview of
-// that one target, which is why the previews look like every other preview in the app. The
-// two things worth pinning are that a row previews the right target through the right
-// plugin, and that the native preview is tied to the list's own component — without that
-// last part the preview dies the moment the pointer leaves the row on its way to it.
+// The list of what an ambiguous word could mean. It renders no previews of its own: each
+// row asks Obsidian for its ordinary page preview of that one target, tied to the list's
+// own component.
 
-const { describe, it, assert } = require('./harness');
+const { describe, it, assert } = require('../src/shared/testing/harness');
 const { installStubs } = require('./stubs/app');
 
 installStubs();

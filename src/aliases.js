@@ -1,18 +1,9 @@
 'use strict';
 
-// Collecting link wording as heading aliases.
-//
-// A heading is matched by its own text and by whatever `%% alias: … %%` comments sit in its
-// section. Those comments had to be typed by hand, while the vault is already full of the
-// answer: every `[[Note#Heading|some other wording]]` link is someone saying that "some other
-// wording" means that heading. Collecting turns those into aliases, so the next occurrence of
-// the phrase is matched on its own.
-//
-// The glossary linker has had this since the start; a heading is just a narrower target for
-// the same idea. The mechanics differ though — glossary terms are whole notes and their
-// aliases live in frontmatter, which Obsidian will edit for us through processFrontMatter.
-// A heading owns no frontmatter, so its aliases live in a comment inside its own section and
-// the edit is ours to make.
+// Collecting link wording as heading aliases: every `[[Note#Heading|some other wording]]`
+// is someone saying "some other wording" means that heading. A heading owns no frontmatter,
+// so its aliases live in a `%% alias: … %%` comment inside its own section, and the edit is
+// ours to make.
 
 const { Notice } = require('obsidian');
 const { t, plural } = require('./shared/i18n');
@@ -65,8 +56,7 @@ function addAliasesToHeading(text, heading, aliases) {
 }
 
 module.exports = {
-  // Exported for the tests: the text rewrite is the part that touches the reader's notes,
-  // and it is pure, so it can be checked without an app.
+  // Exported for the tests: pure text rewrites, checkable without an app.
   _addAliasesToHeading: addAliasesToHeading,
   _headingRegion: headingRegion,
 
@@ -120,10 +110,8 @@ module.exports = {
       : t('notice.headingGone', { term: heading }));
   },
 
-  // Collect every heading link in `file` whose wording differs from the heading it points at.
-  //
-  // Grouped by target note so each one is opened and written once, however many of its
-  // headings the source note links to.
+  // Collect every heading link in `file` whose wording differs from the heading it points
+  // at, grouped by target note so each one is written once.
   async collectAliasesFromNote(file) {
     const cache = this.app.metadataCache.getFileCache(file);
     const links = (cache && cache.links) || [];

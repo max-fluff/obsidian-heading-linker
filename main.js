@@ -1037,14 +1037,6 @@ var require_folder_suggest = __commonJS({
   }
 });
 
-// src/folder-suggest.js
-var require_folder_suggest2 = __commonJS({
-  "src/folder-suggest.js"(exports2, module2) {
-    "use strict";
-    module2.exports = require_folder_suggest();
-  }
-});
-
 // src/shared/folder-list.js
 var require_folder_list = __commonJS({
   "src/shared/folder-list.js"(exports2, module2) {
@@ -1239,18 +1231,14 @@ var require_discover = __commonJS({
             end: m.end,
             label: m.label || m.target || "",
             target: m.target,
-            // The peer's id travels with the candidate so it can survive a round trip through a
-            // DOM attribute — the editor decoration carries candidates as data, and the opener
-            // is looked up again at click time.
+            // The id survives a round trip through a DOM attribute; the opener is looked up
+            // again at click time.
             id: peer.id,
             source: peer.displayName || peer.id,
             open: (sourcePath, newTab) => {
               if (typeof peer.open === "function")
                 peer.open(m.target, sourcePath, newTab);
             },
-            // The peer previews its own target: only it knows whether that means a note, a
-            // heading anchor or something else. A peer too old to publish this simply has no
-            // preview in the list, which is the behaviour it had before the list existed.
             hover: (event, targetEl, sourcePath, hoverParent) => {
               if (typeof peer.hover === "function")
                 peer.hover(m.target, event, targetEl, sourcePath, hoverParent);
@@ -1281,15 +1269,12 @@ var require_discover = __commonJS({
             label: it.label,
             note: it.note || "",
             target: it.target,
-            // What the inserted link should read. null (or absent) means "keep whatever the
-            // reader typed" — the peer says which, because only it knows whether its candidate
-            // matched an inflection of the typed word or completed a prefix of it.
+            // null means "keep what the reader typed"; only the peer knows whether its
+            // candidate matched an inflection or completed a prefix.
             display: it.display == null ? null : it.display,
             id: peer.id,
             source: peer.displayName || peer.id,
             precedence: peer.precedence || 0,
-            // The peer builds its own link text: nobody else should have to know whether a
-            // target is a term title or a File#Heading.
             insert: (display, inTable) => typeof peer.linkFor === "function" ? peer.linkFor(it.target, display, inTable) : null
           });
         }
@@ -1400,7 +1385,7 @@ var require_settings_tab = __commonJS({
   "src/settings-tab.js"(exports2, module2) {
     "use strict";
     var { PluginSettingTab, Setting, Notice: Notice2 } = require("obsidian");
-    var { PathSuggest, folderSuggestAvailable } = require_folder_suggest2();
+    var { PathSuggest, folderSuggestAvailable } = require_folder_suggest();
     var { sanitizeFolder: sanitizeFolder2 } = require_constants();
     var { renderFolderList } = require_folder_list();
     var { t: t2, plural: plural2 } = require_i18n();
@@ -1933,8 +1918,6 @@ var require_matcher2 = __commonJS({
     var { splitLines: splitLines2 } = require_markdown();
     var { createMatcher } = require_matcher();
     var core = createMatcher({
-      // Two different strings here, unlike the glossary: a heading is identified by its full
-      // linktext, but "is this the note's own term?" is a question about the file it lives in.
       idOf: (c) => c.linktext,
       selfIdOf: (c) => c.fileBase,
       fieldsOf: (c) => ({ linktext: c.linktext, label: c.label }),
@@ -2024,18 +2007,14 @@ var require_highlight = __commonJS({
       const ATTR_ALTS = `data-${cls}-alts`;
       const ATTR_FOREIGN = `data-${cls}-foreign`;
       return {
-        // Our matches minus the ones a higher-ranked sibling linker also claims. With no sibling
-        // installed this is the list itself and costs nothing; with one, a word both know is
-        // drawn once, by the same plugin in both render modes, rather than by whichever ran
-        // first. See shared/discover.js.
+        // Our matches minus the ones a higher-ranked sibling also claims.
         ownSpans(text, matches) {
           const provider = this.api && this.api.linker;
           if (!provider)
             return matches;
           return ownedMatches(this.app, provider, text, matches);
         },
-        // What the linkers that yielded a span to us would have offered there. Empty in a solo
-        // vault, so the caller pays nothing for asking.
+        // What the linkers that yielded a span to us would have offered there.
         yieldedIn(text) {
           const provider = this.api && this.api.linker;
           if (!provider)
@@ -2141,8 +2120,7 @@ var require_highlight = __commonJS({
             frag.appendChild(document.createTextNode(text.slice(cursor)));
           node.parentNode.replaceChild(frag, node);
         },
-        // Editor highlight (Live Preview / Source). Always registered; the
-        // editingHighlight setting controls if and how often it recomputes.
+        // Always registered; the editingHighlight setting controls if and how often it recomputes.
         registerEditingHighlight() {
           let view, state, language;
           try {
@@ -2320,9 +2298,8 @@ var require_highlight = __commonJS({
                   if (targetEl(e) && plugin.choices)
                     plugin.choices.leave();
                 }
-                // No handler for contextmenu: a right-click in the editor already raises Obsidian's
-                // own menu, and everything we offer for the word under the cursor is added there.
-                // One menu, whichever half of the toggle applies.
+                // No contextmenu handler: a right-click already raises Obsidian's menu, and
+                // everything we offer for the word under the cursor is added there.
               }
             }
           );
@@ -2340,13 +2317,9 @@ var require_highlight2 = __commonJS({
     "use strict";
     var { createHighlight } = require_highlight();
     module2.exports = createHighlight({
-      // A global namespace: `heading-link`, `cm-heading-link`, `data-heading-target`.
       cls: "heading",
       displayName: "Heading Linker",
-      // What a heading match links to: "Basename#Heading".
       targetOf: (m) => m.linktext,
-      // A note's own headings are not offered inside it, so the matcher needs to know which
-      // file it is reading.
       selfIdFor: (plugin, sourcePath) => plugin.currentFileBase(sourcePath)
     });
   }
@@ -3028,35 +3001,19 @@ var require_api = __commonJS({
             apiVersion: LINKER_API,
             id: "heading-linker",
             displayName: "Heading Linker",
-            // Which half of the family we are. Prose linkers contest bare words with each other
-            // and never with the sigil pair, so this is what keeps the precedence setting from
-            // offering a choice between two plugins that can't collide.
             kind: "prose",
-            // Higher wins a contested word. A heading points into a file at an anchor, which is
-            // a narrower answer than a whole note, so it outranks the glossary by default —
-            // adjustable, and read from here by the other side rather than assumed. A getter,
-            // so a change in settings is seen without rebuilding the api object.
+            // A getter, so a settings change is seen without rebuilding the api object.
             get precedence() {
               return plugin.settings.linkPrecedence;
             },
-            // Spans of `text` we claim, with what each one resolves to. Protected ranges are
-            // skipped, so the answer matches what we would actually decorate. The label and
-            // target let whoever owns the span offer ours as a choice instead of dropping it.
+            // Protected ranges are skipped, so the answer matches what we would decorate.
             matches: (text) => plugin.findMatches(String(text || ""), null, { protect: true }).map((m) => ({ start: m.start, end: m.end, label: m.label, target: m.linktext })),
-            // Open one of our targets. Ours to resolve — nobody else should have to know that a
-            // heading link is a File#Heading.
             open: (target, sourcePath, newTab) => plugin.openTerm(target, sourcePath, newTab),
-            // Show our own preview of one of our targets, anchored to someone else's element.
-            // Used by the duplicate list, which lists candidates from every linker but must let
-            // each one preview its own.
+            // Our own preview of one of our targets, anchored to someone else's element.
             hover: (target, event, targetEl, sourcePath, hoverParent) => plugin.hoverTerm(event, targetEl, target, sourcePath, hoverParent),
-            // What we would autocomplete for a typed word, for the linker that owns the popup.
-            // The note is the line the reader sees under the name, already localised by us.
             suggest: (query) => suggestionsFor(plugin, String(query || "")),
-            // Our link text for a target. The popup's owner writes it but never composes it.
+            // The popup's owner writes our link text but never composes it.
             linkFor: (target, display, inTable) => plugin.wikiLink(target, display, inTable),
-            // Redraw after the other side changes who ranks higher, so the setting takes effect
-            // in both plugins at once instead of at the next rebuild.
             refresh: () => plugin.rerenderViews()
           }
         };
@@ -3231,8 +3188,7 @@ var require_aliases = __commonJS({
       return lines.join("\n");
     }
     module2.exports = {
-      // Exported for the tests: the text rewrite is the part that touches the reader's notes,
-      // and it is pure, so it can be checked without an app.
+      // Exported for the tests: pure text rewrites, checkable without an app.
       _addAliasesToHeading: addAliasesToHeading,
       _headingRegion: headingRegion,
       // Aliases already attached to `heading` in `file`, lower-cased, including the heading's
@@ -3281,10 +3237,8 @@ var require_aliases = __commonJS({
         const added = await this.writeHeadingAliases(link.targetFile, /* @__PURE__ */ new Map([[heading, [display]]]));
         new Notice2(added ? t2("notice.aliasAdded", { alias: display, term: heading }) : t2("notice.headingGone", { term: heading }));
       },
-      // Collect every heading link in `file` whose wording differs from the heading it points at.
-      //
-      // Grouped by target note so each one is opened and written once, however many of its
-      // headings the source note links to.
+      // Collect every heading link in `file` whose wording differs from the heading it points
+      // at, grouped by target note so each one is written once.
       async collectAliasesFromNote(file) {
         const cache = this.app.metadataCache.getFileCache(file);
         const links = cache && cache.links || [];
@@ -3329,8 +3283,6 @@ var require_popover = __commonJS({
     var HIDE_GRACE = 250;
     var EDGE_PAD = 12;
     var Popover = class {
-      // `cls` is the plugin's own class on the root element; `hiddenCls` defaults to `${cls}`
-      // with a -hidden suffix on the plugin's prefix, but both can be passed explicitly.
       constructor(opts) {
         this.cls = opts.cls;
         this.hiddenCls = opts.hiddenCls;
@@ -3364,8 +3316,8 @@ var require_popover = __commonJS({
         clearTimeout(this.hideTimer);
         this.hideTimer = null;
       }
-      // Ask for `key` to be shown after the delay. Re-asking for what is already up, or already
-      // on its way, changes nothing — otherwise every mouse move would restart the timer.
+      // Re-asking for what is already up, or already on its way, changes nothing — otherwise
+      // every mouse move would restart the timer.
       schedule(key, x, y, build) {
         this.cancelHide();
         if (key === this.key && this.isVisible())
@@ -3455,8 +3407,8 @@ var require_choices = __commonJS({
     var { Component } = require("obsidian");
     var labelOf = (c) => typeof c === "object" && c ? c.label : c;
     var ChoicePopover2 = class {
-      // `cls` is the plugin's own class prefix. `hover(target, event, el, hoverParent)` asks for
-      // our own native preview of one of our targets; `open(target)` follows it.
+      // `hover(target, event, el, hoverParent)` previews one of our own targets; `open(target)`
+      // follows it.
       constructor(opts) {
         this.opts = opts;
         this.component = null;
@@ -3466,9 +3418,7 @@ var require_choices = __commonJS({
           onHide: () => this.unloadComponent(),
           onDestroy: () => this.unloadComponent(),
           // The preview a row opens is Obsidian's own element in the body, not a child of ours,
-          // so moving the pointer into it reads as leaving the list. Staying up while the reader
-          // is inside that preview is the difference between a list you can use and one that
-          // vanishes the moment you try.
+          // so moving the pointer into it reads as leaving the list.
           keepAlive: () => !!document.querySelector(".hover-popover:hover")
         });
       }
@@ -3490,8 +3440,7 @@ var require_choices = __commonJS({
       destroy() {
         this.pop.destroy();
       }
-      // The component the native previews hang off. Unloading it closes any preview still open,
-      // so the list going away takes its children with it rather than leaving them orphaned.
+      // Unloading the component closes any preview still hanging off it.
       unloadComponent() {
         if (this.component) {
           this.component.unload();
@@ -3504,9 +3453,8 @@ var require_choices = __commonJS({
         const key = candidates.map(labelOf).join("\0");
         this.pop.schedule(key, x, y, (el) => this.build(candidates, el));
       }
-      // A fresh component per preview, so opening one closes the last. They are all anchored to
-      // rows in the same list, and without this every row the pointer crossed would leave its
-      // own preview on screen until the list closed — a stack of them, one per row visited.
+      // A fresh component per preview, so opening one closes the last instead of stacking one
+      // preview per row the pointer crossed.
       newComponent() {
         this.unloadComponent();
         this.component = new Component();
@@ -4478,14 +4426,11 @@ var HeadingLinkerPlugin = class extends Plugin {
     const f = this.app.workspace.getActiveFile();
     return f ? f.path : "";
   }
-  // `hoverParent` decides how long the preview lives. It is normally the plugin, but the
-  // duplicate list passes its own component so the preview it opens dies with the list —
-  // the same arrangement Obsidian uses for a preview opened from inside a preview.
+  // `hoverParent` decides how long the preview lives: normally the plugin, but the duplicate
+  // list passes its own component so the preview it opens dies with the list.
   hoverTerm(event, targetEl, linktext, sourcePath, hoverParent) {
     this.app.workspace.trigger("hover-link", {
       event,
-      // A row of the duplicate list previews on plain hover; a word in the text follows the
-      // app's own rule for its render mode.
       source: hoverParent ? "heading-linker-choice" : "heading-linker",
       hoverParent: hoverParent || this,
       targetEl,
