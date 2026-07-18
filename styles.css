@@ -45,6 +45,17 @@ settings:
   cursor: pointer;
 }
 
+/* Reading view builds the match as a real <a> so hover preview and click behave like any
+   link — and a theme underlines links, which lands a second line under our own. Ours is the
+   one carrying the underline-style setting, so the anchor's own decoration is switched off
+   here, at a specificity a theme's `.markdown-rendered a` rule can't outrank. */
+a.heading-link,
+a.heading-link:hover,
+a.heading-link.internal-link,
+a.heading-link.internal-link:hover {
+  text-decoration: none;
+}
+
 .heading-link:hover,
 .cm-heading-link:hover {
   color: var(--link-color-hover);
@@ -220,3 +231,5 @@ settings:
   width: 16px;
   height: 16px;
 }
+
+/* Heading Linker 1.1.0 */

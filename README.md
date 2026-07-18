@@ -130,7 +130,7 @@ The es/de/fr stemmers were translated to JavaScript and adapted to this plugin's
 
 ## Development
 
-The core is written as small CommonJS modules in `src/` and bundled into `main.js` by esbuild. The language modules in `languages/` are bundled in through `src/builtin-languages.js`; adding a language means contributing a module there and rebuilding (see [`languages/README.md`](languages/README.md)). Nothing is loaded or executed at runtime.
+The core is written as small CommonJS modules in `src/` and bundled into `main.js` by esbuild. The language modules live in the shared submodule, under `src/shared/morphology/languages/`, and are bundled in through `src/shared/morphology/builtin-languages.js`; adding a language means contributing a module there and rebuilding (see [`languages/README.md`](src/shared/morphology/languages/README.md)). Nothing is loaded or executed at runtime.
 
 Generic code shared with the sibling linker plugins lives in `src/shared/`, a git submodule of [obsidian-linker-shared](https://github.com/max-fluff/obsidian-linker-shared). Clone with `--recurse-submodules` so the build can find it:
 
@@ -146,8 +146,6 @@ In an existing clone without the submodule, run `git submodule update --init` fi
 
 - `main.js` — the `Plugin` class: lifecycle, commands, menus, scope and sources, link writing, alias parsing, small helpers; applies the mixins below.
 - `constants.js` — default settings.
-- `builtin-languages.js` — requires the modules in `languages/` so they are bundled into `main.js`.
-- `language-api.js` — the language-module contract and `validateLanguage()`.
 - `matcher.js` — the heading index and matching engine (`keysFor`, `tokenizeForm`, `rebuildIndex`, `findMatches`, protected ranges).
 - `highlight.js` — Reading-view DOM highlighting and the CM6 editor extension.
 - `materialize.js` — turning matches into links and reverting them, plus the link context menu.
@@ -155,10 +153,10 @@ In an existing clone without the submodule, run `git submodule update --init` fi
 - `settings-tab.js` — the settings UI.
 - `folder-suggest.js` — path autocomplete for the source/scope lists (feature-detected).
 - `heading-suggest.js` — the editor autocomplete (`EditorSuggest`, feature-detected).
-- `shared/` — git submodule shared with the sibling plugins: markdown helpers, the i18n engine, and the folder-list settings editor.
+- `shared/` — git submodule shared with the sibling plugins: markdown helpers, the i18n engine, the folder-list settings editor, and `morphology/` (the language modules, their contract and `validateLanguage()`).
 - `locales/` — interface strings (English and Russian), fed to the shared i18n engine.
 
-`main.js` is generated; edit `src/` (or `languages/`) and rebuild rather than editing it directly. `node_modules/`, `package-lock.json` and `esbuild.local.mjs` are git-ignored.
+`main.js` is generated; edit `src/` and rebuild rather than editing it directly. `node_modules/`, `package-lock.json` and `esbuild.local.mjs` are git-ignored.
 
 ## Installation
 
