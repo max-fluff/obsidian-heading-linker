@@ -5,6 +5,7 @@
 # Heading Linker
 
 <p align="center">
+  <a href="https://community.obsidian.md/plugins/heading-linker"><img src="https://img.shields.io/badge/dynamic/json?logo=obsidian&color=7c3aed&query=%24%5B%22heading-linker%22%5D.downloads&url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json&label=downloads" alt="Obsidian downloads"></a>
   <a href="https://github.com/max-fluff/obsidian-heading-linker/releases/latest"><img src="https://img.shields.io/github/v/release/max-fluff/obsidian-heading-linker?sort=semver&color=7c3aed&label=release" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/max-fluff/obsidian-heading-linker?color=7c3aed" alt="License: MIT"></a>
 </p>
@@ -13,7 +14,7 @@ Finds words in your notes and turns them into links to matching **headings** ins
 
 It's the file-based sibling of [Glossary Linker](https://community.obsidian.md/plugins/glossary-linker) — that one treats each note as a term, this one treats each heading inside a chosen file as a term, on the same matching engine.
 
-> **Beta.** Not in the community catalog yet — install via [BRAT](#installation) for now.
+Available in the Obsidian community catalog: **[community.obsidian.md/plugins/heading-linker](https://community.obsidian.md/plugins/heading-linker)**.
 
 <p align="center">
   <img src="docs/images/hero.png" alt="A note where words matching headings are highlighted in several word forms and in two languages" width="700">
@@ -244,11 +245,13 @@ In an existing clone without the submodule, run `git submodule update --init` fi
 
 ## Installation
 
-**Beta builds via [BRAT](https://github.com/TfTHacker/obsidian42-brat) (for now).** Install the BRAT community plugin, add the repository `max-fluff/obsidian-heading-linker`, then enable **Heading Linker** in *Settings → Community plugins*.
+**From Obsidian (recommended).** Open *Settings → Community plugins → Browse*, search for **Heading Linker**, then *Install* and *Enable*. You can also open its catalog page directly: [community.obsidian.md/plugins/heading-linker](https://community.obsidian.md/plugins/heading-linker).
 
 **Manually.** Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/max-fluff/obsidian-heading-linker/releases/latest) into `<vault>/.obsidian/plugins/heading-linker/`, then enable the plugin in *Settings → Community plugins*.
 
-Once installed, set your glossary files (or switch to whole-vault sourcing) under *Settings → Heading Linker → Heading sources*. A community-catalog listing is planned.
+**Beta builds via [BRAT](https://github.com/TfTHacker/obsidian42-brat).** Add the repository `max-fluff/obsidian-heading-linker` to test unreleased changes before they reach the catalog.
+
+Once installed, set your glossary files (or switch to whole-vault sourcing) under *Settings → Heading Linker → Heading sources*.
 
 ## Compatibility
 
@@ -279,10 +282,10 @@ Also by the author — the rest of the linker family. Two of them highlight word
   </a>
 </p>
 
-**[Reference Linker](https://github.com/max-fluff/obsidian-reference-linker)** — autocompletes links to external documents (PDF, Office, images) and inserts a deep-link that opens them at the right page in an external viewer. Desktop-only. Not in the community catalog yet.
+**[Reference Linker](https://community.obsidian.md/plugins/reference-linker)** — autocompletes links to external documents (PDF, Office, images) and inserts a deep-link that opens them at the right page in an external viewer. Desktop-only.
 
 <p align="center">
-  <a href="https://github.com/max-fluff/obsidian-reference-linker">
+  <a href="https://community.obsidian.md/plugins/reference-linker">
     <img src="docs/images/reference-linker-banner.svg" alt="Reference Linker — autocomplete document references, jump to the exact page" width="480">
   </a>
 </p>
