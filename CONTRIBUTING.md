@@ -16,7 +16,7 @@ npm test         # the full suite
 
 `main.js` and `styles.css` are generated. Edit the modules in `src/` and rebuild; don't edit either by hand. The [Development](README.md#development) section explains how `src/` is laid out.
 
-`npm test` runs everything. CI runs `npm run test:core` — the tests a push has to pass, which are the ones whose failure you cannot see for yourself: the cross-plugin contract, and whether the built bundle loads at all. The rest pin behaviour, and behaviour is what most commits are meant to change.
+`npm test` runs everything. CI runs `npm run test:core`, which is deliberately almost nothing: that the plugin loads at all, and that a sibling built from a different commit of the submodule degrades instead of crashing. Those are the two things a push must not break and the two you cannot check for yourself. Everything else is logic — changing it is what most commits are for — and it should not have to argue with CI before you can push.
 
 ## The shared submodule
 
