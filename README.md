@@ -4,6 +4,11 @@
 
 # Heading Linker
 
+<p align="center">
+  <a href="https://github.com/max-fluff/obsidian-heading-linker/releases/latest"><img src="https://img.shields.io/github/v/release/max-fluff/obsidian-heading-linker?sort=semver&color=7c3aed&label=release" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/max-fluff/obsidian-heading-linker?color=7c3aed" alt="License: MIT"></a>
+</p>
+
 Finds words in your notes and turns them into links to matching **headings** inside files you nominate as glossaries — in any word form (declensions, plurals), not just exact spellings. Keep a `Guide.md` with a `## Projectile` heading, and every "projectile", "projectiles" or other form elsewhere gets highlighted and can become `[[Guide#Projectile|projectiles]]`: a real link that opens the file at that heading, with the note's own wording kept as the visible text.
 
 It's the file-based sibling of [Glossary Linker](https://community.obsidian.md/plugins/glossary-linker) — that one treats each note as a term, this one treats each heading inside a chosen file as a term, on the same matching engine.
@@ -247,3 +252,7 @@ Also by the author — the rest of the linker family. Two of them highlight word
     <img src="docs/images/reference-linker-banner.svg" alt="Reference Linker — autocomplete document references, jump to the exact page" width="480">
   </a>
 </p>
+
+## License
+
+MIT, see [`LICENSE`](LICENSE). Bundled third-party notices are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
