@@ -1,7 +1,7 @@
 'use strict';
 
 const { Notice } = require('obsidian');
-const { splitLines } = require('./shared/markdown');
+const { splitLines, wordAt } = require('./shared/markdown');
 const { MaterializePreviewModal, UnlinkPreviewModal, ChooseTermModal } = require('./modals');
 const { candidatesFor } = require('./shared/discover');
 const { t, plural } = require('./shared/i18n');
@@ -179,6 +179,12 @@ module.exports = {
   // ownership hid it exactly where it is most wanted — on a word both linkers match, where
   // the loser is drawing nothing yet still matches, and the settings tab was the only way
   // left to tell it to stop.
+  // The plain word under the cursor, whether or not the index knows it.
+  rawWordAtCursor(editor) {
+    const head = editor.getCursor('head');
+    return wordAt(editor.getLine(head.line), head.ch);
+  },
+
   wordAtCursor(editor) {
     const head = editor.getCursor('head');
     const line = editor.getLine(head.line);
@@ -214,17 +220,17 @@ module.exports = {
     return splitLines(this.settings.excludeTerms).some((l) => l.toLowerCase() === v);
   },
 
-  // Toggle `value` (a heading text) in the excluded-headings list. A prefix is used for
-  // native menus (brand-prefixed wording); the plugin's own menu passes none.
-  addExclusionMenuItem(menu, value, prefix = '') {
+  // Toggle `value` (a heading text) in the excluded-headings list. Tagged with the verb, so
+  // the builder collects it with whatever else offers to exclude the same word.
+  addExclusionMenuItem(menu, value) {
     const noun = t('exclude.terms');
-    if (this.isExcluded(value)) {
-      menu.addItem((i) => i.setTitle(t(prefix ? 'exclude.removePrefixed' : 'exclude.remove', { value, noun })).setIcon('rotate-ccw')
-        .onClick(() => this.setExcluded(value, false)));
-    } else {
-      menu.addItem((i) => i.setTitle(t(prefix ? 'exclude.addPrefixed' : 'exclude.add', { value, noun })).setIcon('trash-2')
-        .onClick(() => this.setExcluded(value, true)));
-    }
+    const excluded = this.isExcluded(value);
+    const key = excluded ? 'exclude.remove' : 'exclude.add';
+    menu.tagged('exclude', { value }, (i, grouped) => i
+      // Inside the group the parent already names the word, so the title drops it.
+      .setTitle(t(grouped ? key + 'Short' : key, { value, noun }))
+      .setIcon(excluded ? 'rotate-ccw' : 'trash-2')
+      .onClick(() => this.setExcluded(value, !excluded)));
   },
 
   async setExcluded(value, add) {

@@ -13,7 +13,7 @@ const api = require('./api');
 const indexEvents = require('./shared/index-events');
 const { HeadingSuggest, suggestAvailable } = require('./heading-suggest');
 const { initI18n, withFamily, t, plural } = require('./shared/i18n');
-const { menuSection } = require('./shared/menu');
+const { buildMenu } = require('./shared/menu-verbs');
 const aliases = require('./aliases');
 const { ChoicePopover } = require('./shared/prose/choices');
 
@@ -124,18 +124,15 @@ class HeadingLinkerPlugin extends Plugin {
       if (active && active.path === file.path) this.updateStatusBarDebounced();
     }));
 
-    // Everything the cursor can act on goes in Obsidian's own menu, flat and grouped by what
-    // the action does — not by which plugin answers for it. Nothing here can collide with a
-    // sibling: a link is recognised by exactly one linker, and on a word several match, only
-    // the owner finds a match at the cursor (see matchAtCursor).
-    this.registerEvent(this.app.workspace.on('editor-menu', (menu, editor) => {
+    // Everything the cursor can act on goes in Obsidian's own menu, grouped by what the
+    // action does rather than by which plugin answers for it — see shared/menu-verbs.js.
+    // Nothing here can collide with a sibling: a link is recognised by exactly one linker,
+    // and on a word several match, only the owner finds a match at the cursor.
+    this.registerEvent(this.app.workspace.on('editor-menu', (nativeMenu, editor) => buildMenu(this, nativeMenu, (menu) => {
       const file = this.app.workspace.getActiveFile();
       const sourcePath = file ? file.path : '';
       const link = this.headingLinkAt(editor);
 
-      // Flat, and named for the list it writes to: "excluded headings" is already ours and
-      // "excluded terms" is already the glossary's, so the wording tells the two apart on its
-      // own. Wrapping one item in a submenu titled with the plugin name only added a click.
       const excludeItem = (value) => {
         if (!this.settings.menuExclude) return;
         this.addExclusionMenuItem(menu, this.labelOf(value));
@@ -163,26 +160,34 @@ class HeadingLinkerPlugin extends Plugin {
         // A word the sibling owns. We draw nothing on it, but we do match it, so the one
         // thing still worth offering is the setting that makes us stop.
         const word = this.wordAtCursor(editor);
-        if (word) excludeItem(word.linktext);
+        if (word) { excludeItem(word.linktext); return; }
+        // Nothing matches — which is also what an already-excluded word looks like, since
+        // exclusion takes it out of the index. Without this the item that put it there has
+        // no counterpart and the reader cannot undo it from the menu at all.
+        const raw = this.rawWordAtCursor(editor);
+        if (raw && this.isExcluded(raw)) excludeItem(raw);
         return;
       }
       const display = hit.match.display;
       const linktext = hit.match.linktext;
       const candidates = () => this.cursorCandidates(hit, sourcePath, false);
+      // Only our own readings: a link is written by the linker that owns it, so a peer's
+      // meaning here could only open its note, never link the word. The peer has its own item.
+      const ownCandidates = () => [hit.match.linktext, ...(hit.match.alts || [])];
 
       if (file && this.settings.menuTurnInto) {
         // Three ways to link the same word differ only in how far they reach, so they are
         // one entry with a choice inside rather than three lines competing for attention.
         const scope = this.settings.linkFirstOnly ? t('scope.first') : t('scope.all');
-        const linkGroup = menuSection(menu, t('menu.linkThisWord', { display }), true, 'link');
+        const linkGroup = menu.section(t('menu.linkThisWord', { display }), 'link');
         linkGroup.addItem((i) => i.setTitle(t('menu.linkHere', { display })).setIcon('link')
-          .onClick(() => this.chooseTerm(candidates(), t('menu.linkDisplayTo', { display }),
+          .onClick(() => this.chooseTerm(ownCandidates(), t('menu.linkDisplayTo', { display }),
             (c) => this.materializeSingle(file, linktext, display, editor.posToOffset({ line: hit.line, ch: hit.match.start }), 0, c))));
         linkGroup.addItem((i) => i.setTitle(t('menu.linkScopeThisNote', { scope, display })).setIcon('links-coming-in')
-          .onClick(() => this.chooseTerm(candidates(), t('menu.linkScopeTo', { scope, display }),
+          .onClick(() => this.chooseTerm(ownCandidates(), t('menu.linkScopeTo', { scope, display }),
             (c) => this.materializeTerm(file, linktext, c))));
         linkGroup.addItem((i) => i.setTitle(t('menu.linkScopeAllNotes', { scope, display })).setIcon('links-going-out')
-          .onClick(() => this.chooseTerm(candidates(), t('menu.linkScopeTo', { scope, display }),
+          .onClick(() => this.chooseTerm(ownCandidates(), t('menu.linkScopeTo', { scope, display }),
             (c) => this.materializeTermScope(linktext, c))));
       }
       if (this.settings.menuOpen) {
@@ -190,7 +195,7 @@ class HeadingLinkerPlugin extends Plugin {
           .onClick(() => this.chooseTerm(candidates(), t('menu.openTitle'), (c) => this.openTerm(c, sourcePath, false))));
       }
       excludeItem(linktext);
-    }));
+    })));
 
     this.registerEvent(this.app.workspace.on('file-menu', (menu, file, source) => {
       if (source === 'link-context-menu') return;

@@ -53,25 +53,14 @@ module.exports = {
   // Exclusion menu
   'exclude.terms': 'excluded headings',
   'exclude.add': 'Add "{value}" to {noun}',
-  'exclude.addPrefixed': 'Heading: add "{value}" to {noun}',
   'exclude.remove': 'Remove "{value}" from {noun}',
-  'exclude.removePrefixed': 'Heading: remove "{value}" from {noun}',
 
   // Modals
   'modal.materialize.title': 'Turn words into heading links',
-  'modal.materialize.summary': 'Reviewing {files} file(s), {replacements} replacement(s).',
   'modal.materialize.ambiguous': '{n} word(s) match more than one heading — pick one or skip:',
-  'modal.leftAsText': '(left as text)',
-  'modal.skipOption': 'skip',
   'modal.unlink.title': 'Unlink heading links',
-  'modal.unlink.summary': 'Reviewing {files} file(s), {links} link(s).',
-  'modal.choose.body': 'This word has more than one match.',
-
-  'label.selection': 'Selection',
 
   // Notices
-  'notice.noActiveNote': 'No active note.',
-  'notice.noSelection': 'Nothing selected.',
   'notice.noMatches': 'No headings found in the text.',
   'notice.noHeadingLinks': 'No heading links to remove.',
   'notice.noteChanged': 'The note changed — nothing written.',
@@ -84,7 +73,6 @@ module.exports = {
   'notice.scanning': 'Scanning notes…',
   'notice.scanningProgress': 'Scanning {current}/{total}…',
   'notice.scopeWritten': 'Wrote {links} across {files}.',
-  'notice.scopeSkipped': ' Skipped {n} note(s) changed since the preview.',
   'notice.indexRebuilt': 'Heading index rebuilt.',
   'notice.aliasAdded': 'Heading Linker: “{alias}” added as an alias of “{term}”',
   'notice.aliasExists': 'Heading Linker: “{term}” already matches “{alias}”',
@@ -131,54 +119,38 @@ module.exports = {
   'set.headingAliases.desc': 'Read `%% alias: a, b %%` comments under a heading as extra wordings that link to it. Turn off to skip reading file bodies (faster in very large vaults).',
 
   // Settings — scope
-  'set.scopeMode.name': 'Where to link',
   'set.scopeMode.desc': 'Which notes get their words highlighted and linked.',
-  'set.scopeMode.folders': 'Only chosen folders',
-  'set.scopeMode.vault': 'The whole vault',
-  'set.scopeFolders.name': 'Folders in scope',
-  'set.scopeFolders.desc': 'Only notes under these folders are linked.',
+  'set.scopeFolders.name': 'Paths to include',
+  'set.scopeFolders.desc': 'A file or a folder. Only these are linked.',
   'set.excludeFolders.name': 'Always excluded',
-  'set.excludeFolders.desc': 'Notes under these folders are never linked.',
-  'set.folderList.add': 'Add a folder…',
+  'set.excludeFolders.desc': 'A file or a folder. Never linked, whatever the mode above says.',
   'set.folderList.remove': 'Remove',
-  'set.folderList.addAria': 'Add folder',
   'set.termsIndexed': '{terms} indexed.',
 
   // Settings — matching
-  'set.matchMode.name': 'Match mode',
   'set.matchMode.desc': 'How word forms are reduced before comparing.',
-  'set.matchMode.stemmer': 'Stemmer (best across forms)',
-  'set.matchMode.endingStrip': 'Light ending strip',
-  'set.matchMode.exact': 'Exact (case-insensitive)',
   'set.minTermLength.name': 'Minimum heading length',
   'set.minTermLength.desc': 'Headings shorter than this are not indexed.',
   'set.smartCase.name': 'Smart case for acronyms',
   'set.smartCase.desc': 'Match mostly-uppercase headings (like "IT" or "NASA") case-sensitively, so they don\'t link ordinary words.',
   'set.headingLevels.name': 'Heading levels',
   'set.headingLevels.desc': 'Which heading levels (H1–H6) become linkable terms.',
-  'set.languages.desc': '{enabled} of {total} enabled',
   'set.languages.invalidSuffix': ', {n} invalid',
-  'set.lang.invalid': 'Invalid: {error}',
   'set.linkFirstOnly.desc': 'Link only the first mention of each heading per note.',
   'set.excludeTerms.name': 'Excluded headings',
   'set.excludeTerms.desc': 'Heading texts to drop from the index entirely, one per line. Their word forms stop linking too.',
 
   // Settings — highlighting
   'set.highlightInReading.desc': 'Underline matched words in rendered notes.',
-  'set.editingHighlight.name': 'Highlight in the editor',
   'set.editingHighlight.desc': 'Underline matched words while editing.',
   'set.editingHighlight.off': 'Off',
-  'set.editingHighlight.live': 'Live',
   'set.skipHeadings.desc': "Don't link words inside a note's own headings.",
   'set.statusBar.desc': 'Show how many headings the current note mentions.',
-  'set.statusBarIncludeLinks.name': 'Count existing links too',
   'set.statusBarIncludeLinks.desc': 'Include headings already linked in the status-bar count.',
 
   // Settings — autocomplete
   'set.linkSuggest.desc': 'Offer to complete a word into a heading link as you type.',
-  'set.suggestMinChars.name': 'Minimum typed length',
-  'set.suggestSkipAfter.desc': "Don't suggest when the word follows one of these characters.",
-
+  'set.suggestSkipAfter.desc': 'Don\'t suggest when the word follows one of these characters, so other autocompletes keep their slot. Empty disables it.',
   // Settings — context menu
   'set.menuTurnInto.name': 'Link actions',
   'set.menuTurnInto.desc': 'Offer "link to this heading" items on a highlighted word.',
@@ -197,7 +169,6 @@ module.exports = {
 
   // Plurals
   'plural.term': { one: '{n} heading', other: '{n} headings' },
-  'plural.alias': { one: '{n} alias', other: '{n} aliases' },
   'plural.file': { one: '{n} file', other: '{n} files' },
   'plural.link': { one: '{n} link', other: '{n} links' },
 };
