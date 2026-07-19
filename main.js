@@ -2661,170 +2661,192 @@ var require_highlight2 = __commonJS({
   }
 });
 
-// src/modals.js
+// src/shared/prose/modals.js
 var require_modals = __commonJS({
-  "src/modals.js"(exports2, module2) {
+  "src/shared/prose/modals.js"(exports2, module2) {
     "use strict";
     var { Modal } = require("obsidian");
     var { t: t2 } = require_i18n();
     var { inTableCell: inTableCell2 } = require_markdown();
     var SKIP = " skip";
-    var MaterializePreviewModal = class extends Modal {
-      constructor(app, files, plugin, onApply) {
-        super(app);
-        this.files = files;
-        this.plugin = plugin;
-        this.onApply = onApply;
-        this.groups = /* @__PURE__ */ new Map();
-        for (const fc of files) {
-          for (const m of fc.matches) {
-            if (!(m.alts && m.alts.length))
-              continue;
-            const key = m.display.toLowerCase();
-            if (!this.groups.has(key))
-              this.groups.set(key, { display: m.display, candidates: [m.linktext, ...m.alts], choice: m.linktext, spans: [] });
-          }
-        }
-      }
-      onOpen() {
-        const { contentEl } = this;
-        contentEl.createEl("h3", { text: t2("modal.materialize.title") });
-        const total = this.files.reduce((n, f) => n + f.matches.length, 0);
-        contentEl.createEl("p", { text: t2("modal.materialize.summary", { files: this.files.length, replacements: total }) });
-        if (this.groups.size) {
-          contentEl.createEl("p", { cls: "heading-section-desc", text: t2("modal.materialize.ambiguous", { n: this.groups.size }) });
-          const panel = contentEl.createDiv({ cls: "heading-resolve-panel" });
-          for (const g of this.groups.values()) {
-            const row = panel.createDiv({ cls: "heading-resolve-row" });
-            row.createSpan({ cls: "heading-resolve-word", text: g.display });
-            row.createSpan({ text: "\u2192" });
-            const sel = row.createEl("select", { cls: "heading-term-select" });
-            for (const term of g.candidates)
-              sel.createEl("option", { text: term, value: term });
-            sel.createEl("option", { text: t2("modal.skipOption"), value: SKIP });
-            sel.value = g.choice;
-            sel.onchange = () => {
-              g.choice = sel.value === SKIP ? null : sel.value;
-              g.spans.forEach((upd) => upd());
-            };
-          }
-        }
-        this.files.forEach((fc) => {
-          contentEl.createDiv({ cls: "heading-preview-file", text: fc.file ? fc.file.path : fc.label || t2("label.selection") });
-          const table = contentEl.createEl("table", { cls: "heading-preview-table" });
-          fc.matches.slice(0, 50).forEach((m) => {
-            const inTable = inTableCell2(fc.original, m.start);
-            const tr = table.createEl("tr");
-            tr.createEl("td", { text: m.display });
-            tr.createEl("td", { text: "\u2192" });
-            const after = tr.createEl("td");
-            if (m.alts && m.alts.length) {
-              tr.addClass("heading-ambiguous-row");
-              const g = this.groups.get(m.display.toLowerCase());
-              const render = () => after.setText(g.choice == null ? t2("modal.leftAsText") : this.plugin.wikiLink(g.choice, m.display, inTable));
-              g.spans.push(render);
-              render();
-            } else {
-              after.setText(this.plugin.wikiLink(m.linktext, m.display, inTable));
-            }
-          });
-          if (fc.matches.length > 50)
-            contentEl.createEl("div", { cls: "heading-preview-empty", text: t2("modal.andMore", { n: fc.matches.length - 50 }) });
-        });
-        const buttons = contentEl.createDiv({ cls: "heading-preview-buttons" });
-        const apply = buttons.createEl("button", { text: t2("btn.apply"), cls: "mod-cta" });
-        apply.onclick = async () => {
-          const results = this.files.map((fc) => {
-            const chosen = [];
+    var MAX_ROWS = 50;
+    function createProseModals(config) {
+      const { cls, targetOf, withTarget } = config;
+      class MaterializePreviewModal extends Modal {
+        constructor(app, files, plugin, onApply) {
+          super(app);
+          this.files = files;
+          this.plugin = plugin;
+          this.onApply = onApply;
+          this.groups = /* @__PURE__ */ new Map();
+          for (const fc of files) {
             for (const m of fc.matches) {
-              if (m.alts && m.alts.length) {
-                const g = this.groups.get(m.display.toLowerCase());
-                if (!g || g.choice == null)
-                  continue;
-                chosen.push(g.choice === m.linktext ? m : { ...m, linktext: g.choice });
-              } else {
-                chosen.push(m);
+              if (!(m.alts && m.alts.length))
+                continue;
+              const key = m.display.toLowerCase();
+              if (!this.groups.has(key)) {
+                this.groups.set(key, { display: m.display, candidates: [targetOf(m), ...m.alts], choice: targetOf(m), spans: [] });
               }
             }
-            const { newText } = this.plugin.applyLinks(fc.original, chosen);
-            return { file: fc.file, label: fc.label, original: fc.original, newText, count: chosen.length };
-          });
-          await this.onApply(results);
-          this.close();
-        };
-        buttons.createEl("button", { text: t2("btn.cancel") }).onclick = () => this.close();
-      }
-      onClose() {
-        this.contentEl.empty();
-      }
-    };
-    var UnlinkPreviewModal = class extends Modal {
-      constructor(app, files, plugin, onApply) {
-        super(app);
-        this.files = files;
-        this.plugin = plugin;
-        this.onApply = onApply;
-      }
-      onOpen() {
-        const { contentEl } = this;
-        contentEl.createEl("h3", { text: t2("modal.unlink.title") });
-        const total = this.files.reduce((n, f) => n + f.matches.length, 0);
-        contentEl.createEl("p", { text: t2("modal.unlink.summary", { files: this.files.length, links: total }) });
-        this.files.forEach((fc) => {
-          contentEl.createDiv({ cls: "heading-preview-file", text: fc.file ? fc.file.path : fc.label || t2("label.selection") });
-          const table = contentEl.createEl("table", { cls: "heading-preview-table" });
-          fc.matches.slice(0, 50).forEach((m) => {
-            const tr = table.createEl("tr");
-            tr.createEl("td", { text: m.source });
-            tr.createEl("td", { text: "\u2192" });
-            tr.createEl("td", { text: m.display });
-          });
-          if (fc.matches.length > 50)
-            contentEl.createEl("div", { cls: "heading-preview-empty", text: t2("modal.andMore", { n: fc.matches.length - 50 }) });
-        });
-        const buttons = contentEl.createDiv({ cls: "heading-preview-buttons" });
-        const apply = buttons.createEl("button", { text: t2("btn.apply"), cls: "mod-cta" });
-        apply.onclick = async () => {
-          const results = this.files.map((fc) => {
-            const { newText, count } = this.plugin.unlinkLinks(fc.original, fc.matches);
-            return { file: fc.file, label: fc.label, original: fc.original, newText, count };
-          });
-          await this.onApply(results);
-          this.close();
-        };
-        buttons.createEl("button", { text: t2("btn.cancel") }).onclick = () => this.close();
-      }
-      onClose() {
-        this.contentEl.empty();
-      }
-    };
-    var ChooseTermModal = class extends Modal {
-      constructor(app, opts) {
-        super(app);
-        this.opts = opts;
-      }
-      onOpen() {
-        const { contentEl } = this;
-        contentEl.createEl("h3", { text: this.opts.title || t2("modal.choose.title") });
-        contentEl.createEl("p", { text: t2("modal.choose.body") });
-        const list = contentEl.createDiv({ cls: "heading-choose-list" });
-        for (const term of this.opts.terms) {
-          const foreign = term && typeof term === "object";
-          const b = list.createEl("button", { cls: "heading-choose-item", text: foreign ? term.label : term });
-          b.onclick = async () => {
-            this.close();
-            if (foreign)
-              term.open();
-            else
-              await this.opts.onChoose(term);
-          };
+          }
         }
-        contentEl.createDiv({ cls: "heading-preview-buttons" }).createEl("button", { text: t2("btn.cancel") }).onclick = () => this.close();
+        onOpen() {
+          const { contentEl } = this;
+          contentEl.createEl("h3", { text: t2("modal.materialize.title") });
+          const total = this.files.reduce((n, f) => n + f.matches.length, 0);
+          contentEl.createEl("p", { text: t2("modal.materialize.summary", { files: this.files.length, replacements: total }) });
+          if (this.groups.size) {
+            contentEl.createEl("p", { cls: `${cls}-section-desc`, text: t2("modal.materialize.ambiguous", { n: this.groups.size }) });
+            const panel = contentEl.createDiv({ cls: `${cls}-resolve-panel` });
+            for (const g of this.groups.values()) {
+              const row = panel.createDiv({ cls: `${cls}-resolve-row` });
+              row.createSpan({ cls: `${cls}-resolve-word`, text: g.display });
+              row.createSpan({ text: "\u2192" });
+              const sel = row.createEl("select", { cls: `${cls}-term-select` });
+              for (const term of g.candidates)
+                sel.createEl("option", { text: term, value: term });
+              sel.createEl("option", { text: t2("modal.skipOption"), value: SKIP });
+              sel.value = g.choice;
+              sel.onchange = () => {
+                g.choice = sel.value === SKIP ? null : sel.value;
+                g.spans.forEach((upd) => upd());
+              };
+            }
+          }
+          this.files.forEach((fc) => {
+            contentEl.createDiv({ cls: `${cls}-preview-file`, text: fc.file ? fc.file.path : fc.label || t2("label.selection") });
+            const table = contentEl.createEl("table", { cls: `${cls}-preview-table` });
+            fc.matches.slice(0, MAX_ROWS).forEach((m) => {
+              const inTable = inTableCell2(fc.original, m.start);
+              const tr = table.createEl("tr");
+              tr.createEl("td", { text: m.display });
+              tr.createEl("td", { text: "\u2192" });
+              const after = tr.createEl("td");
+              if (m.alts && m.alts.length) {
+                tr.addClass(`${cls}-ambiguous-row`);
+                const g = this.groups.get(m.display.toLowerCase());
+                const render = () => after.setText(g.choice == null ? t2("modal.leftAsText") : this.plugin.wikiLink(g.choice, m.display, inTable));
+                g.spans.push(render);
+                render();
+              } else {
+                after.setText(this.plugin.wikiLink(targetOf(m), m.display, inTable));
+              }
+            });
+            if (fc.matches.length > MAX_ROWS) {
+              contentEl.createEl("div", { cls: `${cls}-preview-empty`, text: t2("modal.andMore", { n: fc.matches.length - MAX_ROWS }) });
+            }
+          });
+          const buttons = contentEl.createDiv({ cls: `${cls}-preview-buttons` });
+          const apply = buttons.createEl("button", { text: t2("btn.apply"), cls: "mod-cta" });
+          apply.onclick = async () => {
+            const results = this.files.map((fc) => {
+              const chosen = [];
+              for (const m of fc.matches) {
+                if (m.alts && m.alts.length) {
+                  const g = this.groups.get(m.display.toLowerCase());
+                  if (!g || g.choice == null)
+                    continue;
+                  chosen.push(g.choice === targetOf(m) ? m : withTarget(m, g.choice));
+                } else {
+                  chosen.push(m);
+                }
+              }
+              const { newText } = this.plugin.applyLinks(fc.original, chosen);
+              return { file: fc.file, label: fc.label, original: fc.original, newText, count: chosen.length };
+            });
+            await this.onApply(results);
+            this.close();
+          };
+          buttons.createEl("button", { text: t2("btn.cancel") }).onclick = () => this.close();
+        }
+        onClose() {
+          this.contentEl.empty();
+        }
       }
-      onClose() {
-        this.contentEl.empty();
+      class UnlinkPreviewModal extends Modal {
+        constructor(app, files, plugin, onApply) {
+          super(app);
+          this.files = files;
+          this.plugin = plugin;
+          this.onApply = onApply;
+        }
+        onOpen() {
+          const { contentEl } = this;
+          contentEl.createEl("h3", { text: t2("modal.unlink.title") });
+          const total = this.files.reduce((n, f) => n + f.matches.length, 0);
+          contentEl.createEl("p", { text: t2("modal.unlink.summary", { files: this.files.length, links: total }) });
+          this.files.forEach((fc) => {
+            contentEl.createDiv({ cls: `${cls}-preview-file`, text: fc.file ? fc.file.path : fc.label || t2("label.selection") });
+            const table = contentEl.createEl("table", { cls: `${cls}-preview-table` });
+            fc.matches.slice(0, MAX_ROWS).forEach((m) => {
+              const tr = table.createEl("tr");
+              tr.createEl("td", { text: m.source });
+              tr.createEl("td", { text: "\u2192" });
+              tr.createEl("td", { text: m.display });
+            });
+            if (fc.matches.length > MAX_ROWS) {
+              contentEl.createEl("div", { cls: `${cls}-preview-empty`, text: t2("modal.andMore", { n: fc.matches.length - MAX_ROWS }) });
+            }
+          });
+          const buttons = contentEl.createDiv({ cls: `${cls}-preview-buttons` });
+          const apply = buttons.createEl("button", { text: t2("btn.apply"), cls: "mod-cta" });
+          apply.onclick = async () => {
+            const results = this.files.map((fc) => {
+              const { newText, count } = this.plugin.unlinkLinks(fc.original, fc.matches);
+              return { file: fc.file, label: fc.label, original: fc.original, newText, count };
+            });
+            await this.onApply(results);
+            this.close();
+          };
+          buttons.createEl("button", { text: t2("btn.cancel") }).onclick = () => this.close();
+        }
+        onClose() {
+          this.contentEl.empty();
+        }
       }
-    };
+      class ChooseTermModal extends Modal {
+        constructor(app, opts) {
+          super(app);
+          this.opts = opts;
+        }
+        onOpen() {
+          const { contentEl } = this;
+          contentEl.createEl("h3", { text: this.opts.title || t2("modal.choose.title") });
+          contentEl.createEl("p", { text: t2("modal.choose.body") });
+          const list = contentEl.createDiv({ cls: `${cls}-choose-list` });
+          for (const term of this.opts.terms) {
+            const foreign = term && typeof term === "object";
+            const b = list.createEl("button", { cls: `${cls}-choose-item`, text: foreign ? term.label : term });
+            b.onclick = async () => {
+              this.close();
+              if (foreign)
+                term.open();
+              else
+                await this.opts.onChoose(term);
+            };
+          }
+          contentEl.createDiv({ cls: `${cls}-preview-buttons` }).createEl("button", { text: t2("btn.cancel") }).onclick = () => this.close();
+        }
+        onClose() {
+          this.contentEl.empty();
+        }
+      }
+      return { MaterializePreviewModal, UnlinkPreviewModal, ChooseTermModal };
+    }
+    module2.exports = { createProseModals, SKIP };
+  }
+});
+
+// src/modals.js
+var require_modals2 = __commonJS({
+  "src/modals.js"(exports2, module2) {
+    "use strict";
+    var { createProseModals } = require_modals();
+    var { MaterializePreviewModal, UnlinkPreviewModal, ChooseTermModal } = createProseModals({
+      cls: "heading",
+      targetOf: (m) => m.linktext,
+      withTarget: (m, linktext) => ({ ...m, linktext })
+    });
     module2.exports = { MaterializePreviewModal, UnlinkPreviewModal, ChooseTermModal };
   }
 });
@@ -2835,7 +2857,7 @@ var require_materialize = __commonJS({
     "use strict";
     var { Notice: Notice2 } = require("obsidian");
     var { splitLines: splitLines2 } = require_markdown();
-    var { MaterializePreviewModal, UnlinkPreviewModal, ChooseTermModal } = require_modals();
+    var { MaterializePreviewModal, UnlinkPreviewModal, ChooseTermModal } = require_modals2();
     var { candidatesFor } = require_discover();
     var { t: t2, plural: plural2 } = require_i18n();
     module2.exports = {
