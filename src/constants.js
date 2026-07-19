@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS = {
   linkSuggest: false, // offer [[link]] autocomplete while typing
   suggestMinChars: 3, // min typed length before autocomplete triggers
   suggestSkipAfter: '@#$^', // yield when the word follows one of these sigils (tags, math, block refs)
+  suggestPlainText: false, // complete the word without making a link
   highlightInReading: true,
   editingHighlight: 'live', // 'off' | 'live' | 'onSave'
   skipHeadings: true, // don't link inside a note's own headings

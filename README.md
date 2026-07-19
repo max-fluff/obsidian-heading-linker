@@ -66,7 +66,9 @@ With **Suggest links while typing** on, typing a word that is (a form of) a head
 
 ### Ambiguous headings
 
-The same heading text in two different files is two different terms. When a word could point at either, the highlight is marked as ambiguous and asks which one you meant — on click, and in the materialize preview (one choice per word, applied everywhere).
+The same heading text in two different files is two different terms. When a word could point at either, the highlight is marked as ambiguous and asks which one you meant — on hover, on click, and in the materialize preview (one choice per word, applied everywhere).
+
+Since the rows would otherwise read as the same heading twice, each carries a second line saying what it is and **which note it lives in** — that file is usually the only thing telling them apart. A row you reached through an alias rather than the heading's own text says so too, which answers the "why is this even on the list" question when the wording you clicked doesn't appear in the heading at all.
 
 ## Sources and scope
 
@@ -95,13 +97,56 @@ Plus per-note toggles that mirror the explorer menu, each shown only when it app
 
 ## Settings
 
-- **Sources** — collect headings from the whole vault or chosen files/folders; ignored sources; which heading levels (H1–H6) become terms; whether to read alias comments.
-- **Scope** — link across the whole vault or chosen folders; always-excluded folders.
-- **Matching** — match mode (stemmer / ending-strip / exact); minimum heading length; smart case for acronyms; active languages and their priority; link only the first occurrence per note; excluded headings.
-- **Highlighting** — Reading-view highlight on/off; editor highlight live / on save / off; skip a note's own headings; status-bar count (optionally counting existing links).
-- **Autocomplete** — suggest links while typing; minimum typed length; characters after which to stay silent.
-- **Context menu** — toggle each group of right-click items (link, open, exclude, unlink).
-- **Maintenance** — rebuild the index on demand.
+**Sources**
+| Setting | Default | Description |
+|---|---|---|
+| **Where headings come from** | `Selected files and folders` | collect headings from the whole vault, or only from the files and folders you list |
+| **Ignored sources** | — | files and folders whose headings are never indexed, even inside a chosen source |
+| **Heading levels** | H1–H6 | which levels become terms |
+| **Read alias comments** | on | pick up `%% alias: … %%` lines under a heading as extra wordings for it |
+
+**Scope**
+| Setting | Default | Description |
+|---|---|---|
+| **Where to link** | `The whole vault` | link everywhere, or only inside chosen folders |
+| **Always-excluded folders** | — | never link here, whatever the scope says |
+
+**Matching**
+| Setting | Default | Description |
+|---|---|---|
+| **Match mode** | `Stemmer` | how an inflected word is matched: `Stemmer` reduces words to a root (recommended); `Ending strip` only chops common endings; `Exact` needs the exact spelling |
+| **Minimum heading length** | `2` | ignore headings and aliases shorter than this, so single letters don't match everywhere |
+| **Smart case for acronyms** | on | a heading written mostly in capitals ("IT", "NASA") only matches text spelled the same way, so it leaves the ordinary word alone. Decided per form: an acronym alias stays case-sensitive even when its heading is an everyday word |
+| **Languages** | English + interface language | per-language toggle; reorder with ↑↓ to set priority when same-script languages overlap |
+| **Link first occurrence only** | off | link only the first occurrence of each heading per page |
+| **Excluded headings** | — | heading texts that never become terms |
+
+**Highlighting**
+| Setting | Default | Description |
+|---|---|---|
+| **Highlight in Reading view** | on | draw the highlight in rendered notes |
+| **Highlight in the editor** | `Live` | `Live`, `On save`, or `Off` |
+| **Skip headings** | on | don't link inside a note's own headings |
+| **Status bar count** | on | show how many headings the open note matches |
+| **Count existing links too** | on | include headings you have already linked in that count |
+
+**Autocomplete**
+| Setting | Default | Description |
+|---|---|---|
+| **Suggest links while typing** | off | offer a link to a matching heading as you type in an in-scope note |
+| **Minimum typed length** | `3` | how many characters to type before suggestions appear |
+| **Skip after characters** | `@#$^` | stay quiet when the word follows one of these, so tags, math and other plugins' autocompletes keep their slot |
+| **Insert plain text** | off | pick a suggestion and get the word alone instead of a link — the completion without the brackets |
+
+**Context menu** — a toggle per group of right-click items: turn into link, open, exclude, unlink, and collect aliases from existing links.
+
+**Maintenance** — the priority order (below) and rebuilding the index on demand.
+
+### Priority among linker plugins
+
+Install more than one linker and they will sometimes claim the same word or the same link. It goes to whichever sits highest in **Settings → Maintenance → Priority among linker plugins**, and the loser stands aside — no double highlight, one entry in the right-click menu, one merged list of suggestions while you type.
+
+The list appears only when another linker is installed. Each plugin moves itself, so reordering may take a move from more than one settings tab; every arrangement is reachable that way.
 
 The highlight color and underline styles are exposed through **[Style Settings](https://github.com/mgmeyers/obsidian-style-settings)** if you have it.
 

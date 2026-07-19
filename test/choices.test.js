@@ -66,11 +66,24 @@ function make(opts = {}) {
 }
 
 describe('duplicate list', () => {
-  it('draws a row per candidate', async () => {
+  it('draws a row per candidate, each described by its owner', async () => {
+    // Two files holding the same heading are the case this list exists for: without the
+    // second line both rows render as the same word and the reader picks blind.
+    const { pop } = make({
+      plugin: { api: { linker: { describe: (target) => ({ title: target.split('#').pop(), note: `Heading · ${target.split('#')[0]}` }) } } },
+    });
+    pop.schedule(['Guide#Spawn', 'Other#Spawn'], 10, 10);
+    await tick();
+    const drawn = rows(pop).map((r) => r.children.map((c) => c.text));
+    assert.deepStrictEqual(drawn, [['Spawn', 'Heading · Guide'], ['Spawn', 'Heading · Other']]);
+  });
+
+  it('falls back to the bare target when nobody describes it', async () => {
     const { pop } = make();
     pop.schedule(['Guide#Spawn', 'Other#Spawn'], 10, 10);
     await tick();
-    assert.deepStrictEqual(rows(pop).map((r) => r.text), ['Guide#Spawn', 'Other#Spawn']);
+    assert.deepStrictEqual(rows(pop).map((r) => r.children.map((c) => c.text)),
+      [['Guide#Spawn'], ['Other#Spawn']]);
   });
 
   it('does not appear for a single meaning', async () => {

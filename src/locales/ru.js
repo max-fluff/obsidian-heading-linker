@@ -106,8 +106,6 @@ module.exports = {
   'set.matchMode.desc': 'Как приводятся словоформы перед сравнением.',
   'set.minTermLength.name': 'Минимальная длина заголовка',
   'set.minTermLength.desc': 'Заголовки короче этого не индексируются.',
-  'set.smartCase.name': 'Умный регистр для аббревиатур',
-  'set.smartCase.desc': 'Заголовки из заглавных букв (например «IT» или «NASA») сопоставляются с учётом регистра, чтобы не цеплять обычные слова.',
   'set.headingLevels.name': 'Уровни заголовков',
   'set.headingLevels.desc': 'Какие уровни заголовков (H1–H6) становятся терминами для ссылок.',
   'set.languages.invalidSuffix': ', {n} с ошибкой',

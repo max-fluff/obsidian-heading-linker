@@ -13,9 +13,6 @@ const core = createMatcher({
   idOf: (c) => c.linktext,
   selfIdOf: (c) => c.fileBase,
   fieldsOf: (c) => ({ linktext: c.linktext, label: c.label }),
-  // Smart case: an acronym-like form ("CNS", "TCP/IP") only matches text spelled the same
-  // way, so "cns" in prose is left alone.
-  caseFits: (plugin, c, surface) => !plugin.settings.smartCase || !c.cs || surface === c.caseText,
 });
 
 module.exports = Object.assign({}, core, {
@@ -42,8 +39,8 @@ module.exports = Object.assign({}, core, {
         if (/[[\]|#^]/.test(label)) continue;
         if (excludeTerms.has(label.toLowerCase())) continue;
         if (label.trim().length < minTermLength) continue;
-        const labelWords = this.tokenizeForm(label);
-        if (!labelWords.length) continue;
+        const labelEntry = this.formEntry(label);
+        if (!labelEntry) continue;
 
         const linktext = `${base}#${label}`;
         if (linktexts.has(linktext)) continue; // duplicate heading in the same file
@@ -54,15 +51,14 @@ module.exports = Object.assign({}, core, {
 
         // The heading text, plus any `%% alias: … %%` wordings, all matched to the same
         // link. Smart case is decided per form (an acronym alias like "CNS" stays cased).
-        const forms = [{ text: label, words: labelWords }];
+        const forms = [labelEntry];
         for (const a of aliases) {
           if (a.toLowerCase() === label.toLowerCase() || a.trim().length < minTermLength) continue;
-          const w = this.tokenizeForm(a);
-          if (w.length) forms.push({ text: a, words: w });
+          const entry = this.formEntry(a);
+          if (entry) forms.push(entry);
         }
         for (const f of forms) {
-          // cs/caseText are per form, so an acronym alias like "CNS" is cased on its own spelling.
-          const matcher = { linktext, label, fileBase: base, words: f.words, wordCount: f.words.length, cs: isAcronymish(f.text), caseText: f.text };
+          const matcher = Object.assign({ linktext, label, fileBase: base }, f);
           for (const k of f.words[0].keys) {
             if (!byKey.has(k)) byKey.set(k, []);
             byKey.get(k).push(matcher);
@@ -79,12 +75,3 @@ module.exports = Object.assign({}, core, {
     this.notifyIndexChange();
   },
 });
-
-// Mostly-uppercase (an acronym like "IT", "NASA", "TCP/IP") — >75% of its letters
-// are uppercase. Used by smart case to demand an exact-case match.
-function isAcronymish(label) {
-  const letters = [...label].filter((ch) => /\p{L}/u.test(ch));
-  if (letters.length < 2) return false;
-  const upper = letters.filter((ch) => ch !== ch.toLowerCase() && ch === ch.toUpperCase()).length;
-  return upper / letters.length > 0.75;
-}

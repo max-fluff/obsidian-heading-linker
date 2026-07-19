@@ -4,7 +4,8 @@
 // DataviewJS can read the heading index. Mixed into the plugin prototype. `api.linker` is
 // the provider contract the sibling linkers read (consumed in shared/discover.js).
 
-const { LINKER_API } = require('./shared/discover');
+const { createProseProvider, aliasHit } = require('./shared/prose/provider');
+const { t } = require('./shared/i18n');
 const { suggestionsFor } = require('./heading-suggest');
 
 module.exports = {
@@ -28,29 +29,22 @@ module.exports = {
       // Subscribe to index rebuilds; returns an unsubscribe function.
       onChange: (cb) => this.onIndexChange(cb),
 
-      linker: {
-        apiVersion: LINKER_API,
+      linker: createProseProvider(plugin, {
         id: 'heading-linker',
         displayName: 'Heading Linker',
-        kind: 'prose',
-        // A getter, so a settings change is seen without rebuilding the api object.
-        get precedence() { return plugin.settings.linkPrecedence; },
-        // Protected ranges are skipped, so the answer matches what we would decorate.
-        matches: (text) => plugin.findMatches(String(text || ''), null, { protect: true })
-          .map((m) => ({ start: m.start, end: m.end, label: m.label, target: m.linktext })),
-        open: (target, sourcePath, newTab) => plugin.openTerm(target, sourcePath, newTab),
-        // Our own preview of one of our targets, anchored to someone else's element.
-        hover: (target, event, targetEl, sourcePath, hoverParent) =>
-          plugin.hoverTerm(event, targetEl, target, sourcePath, hoverParent),
-        suggest: (query) => suggestionsFor(plugin, String(query || '')),
-        // The popup's owner writes our link text but never composes it.
-        linkFor: (target, display, inTable) => plugin.wikiLink(target, display, inTable),
-        // Whether we would add a menu item of this verb for this text — asked before either
-        // plugin writes one, since the grouping has to be settled first.
-        offers: (kind, text) => kind === 'exclude' && !!plugin.settings.menuExclude
-          && (plugin.findMatches(String(text || ''), null).length > 0 || plugin.isExcluded(String(text || ''))),
-        refresh: () => plugin.rerenderViews(),
-      },
+        spanOf: (m) => ({ start: m.start, end: m.end, label: m.label, target: m.linktext }),
+        suggestionsFor,
+        excludes: (text) => plugin.isExcluded(text),
+        // The raw target reads "Guide#Spawn"; the reader wants the heading and the note it
+        // sits in, since two files holding the same heading are what makes a span ambiguous.
+        describe: (target, display) => {
+          const term = (plugin.terms || []).find((x) => x.linktext === target);
+          const label = term ? term.label : String(target).split('#').pop();
+          const file = term ? term.fileBase : String(target).split('#')[0];
+          const parts = [t('kind.heading'), aliasHit(plugin, term, label, display), file];
+          return { title: label, note: parts.filter(Boolean).join(' · ') };
+        },
+      }),
     };
   },
 

@@ -131,8 +131,6 @@ module.exports = {
   'set.matchMode.desc': 'How word forms are reduced before comparing.',
   'set.minTermLength.name': 'Minimum heading length',
   'set.minTermLength.desc': 'Headings shorter than this are not indexed.',
-  'set.smartCase.name': 'Smart case for acronyms',
-  'set.smartCase.desc': 'Match mostly-uppercase headings (like "IT" or "NASA") case-sensitively, so they don\'t link ordinary words.',
   'set.headingLevels.name': 'Heading levels',
   'set.headingLevels.desc': 'Which heading levels (H1–H6) become linkable terms.',
   'set.languages.invalidSuffix': ', {n} invalid',
