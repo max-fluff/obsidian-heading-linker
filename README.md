@@ -15,6 +15,10 @@ It's the file-based sibling of [Glossary Linker](https://community.obsidian.md/p
 
 > **Beta.** Not in the community catalog yet — install via [BRAT](#installation) for now.
 
+<p align="center">
+  <img src="docs/images/hero.png" alt="A note where words matching headings are highlighted in several word forms and in two languages" width="700">
+</p>
+
 The plugin ships as `main.js`, `manifest.json` and `styles.css`. Six language modules are baked into `main.js`, so morphology works the moment you install it. `main.js` is built from `src/` with esbuild (see [Development](#development)).
 
 ## Contents
@@ -46,9 +50,23 @@ Words that match a heading are underlined in Reading view and in the editor (Liv
 
 Compared with virtual-link plugins such as Virtual Linker and FakeLink, the two differences are that Heading Linker matches inflected forms (they match literal text) and that it can turn matches into real links, not only show an overlay.
 
+<p align="center">
+  <img src="docs/images/context-menu.png" alt="The right-click menu on a highlighted word" width="300">
+</p>
+
 ### Turn headings into real links
 
 The highlight is a live overlay that changes nothing on disk — but you can *materialize* it: turn matches into actual `[[File#Heading|word]]` wikilinks, for the current note, a selection, or every note in scope. A preview lists every replacement first; nothing is written until you apply, and a note edited since the preview is skipped. Materialized links are ordinary wikilinks, so they get native hover-preview and click, and count in the graph and backlinks.
+
+<p align="center">
+  <img src="docs/images/turn-into-links.png" alt="The preview dialog listing each replacement before it is written" width="540">
+</p>
+
+Run it across the vault and the preview groups the replacements by file:
+
+<p align="center">
+  <img src="docs/images/turn-into-links-all.png" alt="The all-notes preview: replacements grouped by file, each with its own checkbox" width="420">
+</p>
 
 ### Unlink
 
@@ -63,15 +81,31 @@ A heading can carry extra wordings — abbreviations or synonyms the stemmer won
 %% alias: CNS, brain and spinal cord %%
 ```
 
+<p align="center">
+  <img src="docs/images/aliases.png" alt="An alias comment under a heading, and a word matched through it elsewhere in a note" width="560">
+</p>
+
 Now "CNS" and "brain and spinal cord" link to that heading too, in any word form, and appear in the autocomplete. Comments are invisible in Reading view, so the note stays clean; use `alias:` or `aliases:`, comma-separated. Reading them is cheap — see [Performance](#performance) — and the **Heading aliases** setting turns it off entirely if you don't use them.
 
 ### Suggest links as you type (optional)
 
 With **Suggest links while typing** on, typing a word that is (a form of) a heading or an alias offers to complete it into a link. Off by default.
 
+<p align="center">
+  <img src="docs/images/quick-capture.png" alt="The link-suggestion popup while typing, listing matching headings" width="560">
+</p>
+
 ### Ambiguous headings
 
 The same heading text in two different files is two different terms. When a word could point at either, the highlight is marked as ambiguous and asks which one you meant — on hover, on click, and in the materialize preview (one choice per word, applied everywhere).
+
+<p align="center">
+  <img src="docs/images/ambiguous-1.png" alt="A word with a distinct underline and a tooltip listing both matching headings with the file each lives in" width="620">
+</p>
+
+<p align="center">
+  <img src="docs/images/ambiguous-2.png" alt="The picker shown when acting on an ambiguous word" width="420">
+</p>
 
 Since the rows would otherwise read as the same heading twice, each carries a second line saying what it is and **which note it lives in** — that file is usually the only thing telling them apart. A row you reached through an alias rather than the heading's own text says so too, which answers the "why is this even on the list" question when the wording you clicked doesn't appear in the heading at all.
 
