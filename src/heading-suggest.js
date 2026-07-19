@@ -1,9 +1,7 @@
 'use strict';
 
-const { EditorSuggest } = require('obsidian');
 const { t } = require('./shared/i18n');
-const { inTableCell } = require('./shared/markdown');
-const { mergeSuggestions } = require('./shared/prose/suggest');
+const { createProseSuggest, suggestAvailable } = require('./shared/prose/editor-suggest');
 
 // The candidates for a typed word, ranked, or an empty list. Kept out of the class and free
 // of editor state: onTrigger needs the answer before it can decide whether to claim the
@@ -63,93 +61,20 @@ function suggestionsFor(plugin, query) {
   }));
 }
 
-// Inline autocomplete: while typing in an in-scope note, offer to insert a link to a
-// heading. Two kinds of candidate:
-//   - 'form'   — the typed word is an inflection of a heading (same engine as the
-//                highlighter); inserts [[File#Heading|typed word]], keeping the wording.
-//   - 'prefix' — the typed text starts a heading; completes to [[File#Heading|Heading]].
-// EditorSuggest predates the plugin's minAppVersion, so callers feature-detect first.
-class HeadingSuggest extends EditorSuggest {
-  constructor(app, plugin) {
-    super(app);
-    this.plugin = plugin;
-  }
-
-  onTrigger(cursor, editor, file) {
-    const plugin = this.plugin;
-    if (!plugin.settings.linkSuggest) return null;
-    if (!file || !plugin.inScope(file.path)) return null;
-
-    const line = editor.getLine(cursor.line);
-    // Only complete at the end of a word — not while the cursor sits inside one.
-    if (/[\p{L}\p{Nd}]/u.test(line[cursor.ch] || '')) return null;
-    const m = line.slice(0, cursor.ch).match(/[\p{L}\p{Nd}]+$/u);
-    if (!m) return null;
-    const query = m[0];
-    if (query.length < Math.max(1, plugin.settings.suggestMinChars || 1)) return null;
-
-    // A word glued to a sigil belongs to another suggester (a tag, math), not prose — yield.
-    const before = line[cursor.ch - query.length - 1] || '';
-    if (before && (plugin.settings.suggestSkipAfter || '').includes(before)) return null;
-
-    // Skip code/links/frontmatter/urls/headings — the same ranges the linker protects.
-    const off = editor.posToOffset(cursor);
-    if (plugin.isProtectedAt(editor.getValue(), off)) return null;
-
-    // Built here rather than in getSuggestions: claiming the popup with nothing to offer
-    // would silence a sibling suggester that does know this word.
-    const items = this.merged(query);
-    if (!items.length) return null;
-    this.cached = { query, items };
-
-    return { start: { line: cursor.line, ch: cursor.ch - query.length }, end: cursor, query };
-  }
-
-  // Our candidates plus every sibling linker's, in one list. See shared/prose/suggest.js.
-  merged(query) {
-    return mergeSuggestions(this.plugin, query, collectSuggestions(this.plugin, query, this.ownFileBase()));
-  }
-
-  // The note being typed in, when it is itself a heading source — its own headings are
-  // never offered, the same exclusion the highlighter makes.
-  ownFileBase() {
-    const active = this.plugin.app.workspace.getActiveFile();
-    return active ? this.plugin.currentFileBase(active.path) : null;
-  }
-
-  getSuggestions(context) {
-    // onTrigger already built these to decide whether to trigger at all; recompute only if
-    // something moved on between the two calls.
-    if (this.cached && this.cached.query === context.query) return this.cached.items;
-    return this.merged(context.query);
-  }
-
-  renderSuggestion(item, el) {
-    el.addClass('heading-suggestion');
-    // A sibling's candidate draws exactly like our own: the reader is choosing a
-    // destination, not a plugin.
-    el.createSpan({ cls: 'heading-suggestion-title', text: item.label });
-    const note = item.insert ? item.note : noteFor(item);
-    if (note) el.createSpan({ cls: 'heading-suggestion-note', text: note });
-  }
-
-  selectSuggestion(item) {
-    const ctx = this.context;
-    if (!ctx) return;
-    const editor = ctx.editor;
-    const inTable = inTableCell(editor.getValue(), editor.posToOffset(ctx.start));
-    // A sibling's candidate is written by the sibling: only it knows whether its target is
-    // a term title, a File#Heading or something else again.
-    // 'form' keeps the typed wording; 'prefix' uses the matched wording (heading or alias).
-    const link = item.insert
-      ? item.insert(item.display == null ? ctx.query : item.display, inTable)
-      : this.plugin.wikiLink(item.linktext, item.kind === 'form' ? ctx.query : (item.matchedForm || item.label), inTable);
-    if (!link) return;
-    editor.replaceRange(link, ctx.start, ctx.end);
-    editor.setCursor(editor.offsetToPos(editor.posToOffset(ctx.start) + link.length));
-  }
-}
-
-const suggestAvailable = () => typeof EditorSuggest === 'function';
+const HeadingSuggest = createProseSuggest({
+  cls: 'heading',
+  // A note's own headings are never offered inside it, the same exclusion the highlighter
+  // makes; the matcher recognises them by the file's basename.
+  ownId: (plugin) => {
+    const active = plugin.app.workspace.getActiveFile();
+    return active ? plugin.currentFileBase(active.path) : null;
+  },
+  collect: collectSuggestions,
+  noteFor,
+  labelOf: (it) => it.label,
+  targetOf: (it) => it.linktext,
+  // 'form' keeps the typed wording; 'prefix' uses the wording that matched, heading or alias.
+  displayFor: (it, query) => (it.kind === 'form' ? query : (it.matchedForm || it.label)),
+});
 
 module.exports = { HeadingSuggest, suggestAvailable, collectSuggestions, suggestionsFor };

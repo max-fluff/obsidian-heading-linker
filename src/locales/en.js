@@ -23,11 +23,6 @@ module.exports = {
 
   'statusBar.aria': '{n} heading(s) on this page — click to link them',
 
-  'noun.file': 'file',
-  'noun.folder': 'folder',
-  'scope.first': 'first',
-  'scope.all': 'all',
-
   // Native context-menu items (brand prefix "Heading:" kept verbatim)
   // No plugin name on these: they act on the link under the cursor, and a link belongs to
   // exactly one linker, so there is never a second one of them to tell apart. The name goes
@@ -50,13 +45,8 @@ module.exports = {
   // how far they reach, so they share one entry with the choice inside it. Each reads on its
   // own — a submenu item is read without its parent in view, so "Here" alone would not say
   // what it does.
-  'menu.linkThisWord': 'Link “{display}”',
-  'menu.linkHere': 'Link “{display}” here',
   'menu.linkScopeThisNote': 'Link {scope} "{display}" in this note',
   'menu.linkScopeAllNotes': 'Link {scope} "{display}" in all notes',
-  'menu.linkDisplayTo': 'Link "{display}" to…',
-  'menu.linkScopeTo': 'Link {scope} "{display}" to…',
-  'menu.openThisWord': 'Open “{display}”',
   'menu.openTitle': 'Open which heading?',
   'menu.openNewTabTitle': 'Open which heading in a new tab?',
 
@@ -67,21 +57,15 @@ module.exports = {
   'exclude.remove': 'Remove "{value}" from {noun}',
   'exclude.removePrefixed': 'Heading: remove "{value}" from {noun}',
 
-
   // Modals
   'modal.materialize.title': 'Turn words into heading links',
   'modal.materialize.summary': 'Reviewing {files} file(s), {replacements} replacement(s).',
   'modal.materialize.ambiguous': '{n} word(s) match more than one heading — pick one or skip:',
   'modal.leftAsText': '(left as text)',
   'modal.skipOption': 'skip',
-  'modal.andMore': '…and {n} more',
   'modal.unlink.title': 'Unlink heading links',
   'modal.unlink.summary': 'Reviewing {files} file(s), {links} link(s).',
-  'modal.choose.title': 'Which one?',
   'modal.choose.body': 'This word has more than one match.',
-
-  'btn.apply': 'Apply',
-  'btn.cancel': 'Cancel',
 
   'label.selection': 'Selection',
 
@@ -147,7 +131,6 @@ module.exports = {
   'set.headingAliases.desc': 'Read `%% alias: a, b %%` comments under a heading as extra wordings that link to it. Turn off to skip reading file bodies (faster in very large vaults).',
 
   // Settings — scope
-  'set.heading.scope': 'Scope',
   'set.scopeMode.name': 'Where to link',
   'set.scopeMode.desc': 'Which notes get their words highlighted and linked.',
   'set.scopeMode.folders': 'Only chosen folders',
@@ -162,7 +145,6 @@ module.exports = {
   'set.termsIndexed': '{terms} indexed.',
 
   // Settings — matching
-  'set.heading.matching': 'Matching',
   'set.matchMode.name': 'Match mode',
   'set.matchMode.desc': 'How word forms are reduced before comparing.',
   'set.matchMode.stemmer': 'Stemmer (best across forms)',
@@ -174,46 +156,30 @@ module.exports = {
   'set.smartCase.desc': 'Match mostly-uppercase headings (like "IT" or "NASA") case-sensitively, so they don\'t link ordinary words.',
   'set.headingLevels.name': 'Heading levels',
   'set.headingLevels.desc': 'Which heading levels (H1–H6) become linkable terms.',
-  'set.languages.name': 'Languages',
   'set.languages.desc': '{enabled} of {total} enabled',
   'set.languages.invalidSuffix': ', {n} invalid',
-  'set.languages.show': 'Show languages',
-  'set.languages.hide': 'Hide languages',
-  'set.lang.higher': 'Higher priority',
-  'set.lang.lower': 'Lower priority',
   'set.lang.invalid': 'Invalid: {error}',
-  'set.linkFirstOnly.name': 'Link first occurrence only',
   'set.linkFirstOnly.desc': 'Link only the first mention of each heading per note.',
   'set.excludeTerms.name': 'Excluded headings',
   'set.excludeTerms.desc': 'Heading texts to drop from the index entirely, one per line. Their word forms stop linking too.',
 
   // Settings — highlighting
-  'set.heading.highlighting': 'Highlighting',
-  'set.highlightInReading.name': 'Highlight in Reading view',
   'set.highlightInReading.desc': 'Underline matched words in rendered notes.',
   'set.editingHighlight.name': 'Highlight in the editor',
   'set.editingHighlight.desc': 'Underline matched words while editing.',
   'set.editingHighlight.off': 'Off',
   'set.editingHighlight.live': 'Live',
-  'set.editingHighlight.onSave': 'On save',
-  'set.skipHeadings.name': 'Skip headings',
   'set.skipHeadings.desc': "Don't link words inside a note's own headings.",
-  'set.statusBar.name': 'Status bar count',
   'set.statusBar.desc': 'Show how many headings the current note mentions.',
   'set.statusBarIncludeLinks.name': 'Count existing links too',
   'set.statusBarIncludeLinks.desc': 'Include headings already linked in the status-bar count.',
 
   // Settings — autocomplete
-  'set.heading.autocomplete': 'Autocomplete',
-  'set.linkSuggest.name': 'Suggest links while typing',
   'set.linkSuggest.desc': 'Offer to complete a word into a heading link as you type.',
   'set.suggestMinChars.name': 'Minimum typed length',
-  'set.suggestMinChars.desc': 'How many characters to type before suggestions appear.',
-  'set.suggestSkipAfter.name': 'Skip after characters',
   'set.suggestSkipAfter.desc': "Don't suggest when the word follows one of these characters.",
 
   // Settings — context menu
-  'set.heading.contextMenu': 'Context menu',
   'set.menuTurnInto.name': 'Link actions',
   'set.menuTurnInto.desc': 'Offer "link to this heading" items on a highlighted word.',
   'set.menuOpen.name': 'Open actions',
@@ -226,19 +192,12 @@ module.exports = {
   'set.menuCollect.desc': 'Offer to collect a link’s own wording as an alias of the heading it points at — on the link itself, and for a whole note from its right-click menu.',
 
   // Settings — maintenance
-  'set.heading.maintenance': 'Maintenance',
   'set.rebuild.name': 'Rebuild index',
   'set.rebuild.desc': 'Re-scan the glossary files for headings.',
-  'set.rebuild.button': 'Rebuild',
 
   // Plurals
   'plural.term': { one: '{n} heading', other: '{n} headings' },
   'plural.alias': { one: '{n} alias', other: '{n} aliases' },
   'plural.file': { one: '{n} file', other: '{n} files' },
   'plural.link': { one: '{n} link', other: '{n} links' },
-  'set.precedence.name': 'Priority among linker plugins',
-  'set.precedence.desc': 'A word or link several linkers claim goes to the one highest in this list. You can only move this plugin — move the others from their own settings.',
-  'set.precedence.other': 'Moved from its own settings',
-  'set.precedence.up': 'Move up',
-  'set.precedence.down': 'Move down',
 };

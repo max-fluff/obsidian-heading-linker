@@ -1,41 +1,72 @@
-/* @settings
+/* Heading Linker 1.1.0 — assembled from the shared styles and src/styles.css by "npm run build". Do not edit directly. */
 
-name: Heading Linker
-id: heading-linker
-settings:
-  -
-    id: heading-link-color
-    title: Highlight color
-    description: Color of heading-term highlights. Leave at default to follow the theme's link color.
-    type: variable-themed-color
-    format: hex
-    opacity: false
-    default-light: '#705dcf'
-    default-dark: '#a68cff'
-  -
-    id: heading-underline-style
-    title: Underline style
-    type: variable-select
-    default: dotted
-    options:
-      - dotted
-      - solid
-      - dashed
-      - double
-      - none
-  -
-    id: heading-ambiguous-underline-style
-    title: Ambiguous-term underline style
-    description: Underline for words that match more than one heading.
-    type: variable-select
-    default: double
-    options:
-      - double
-      - dotted
-      - dashed
-      - solid
+/* Styles every linker plugin uses. The token below stands for the plugin class prefix;
+   build.mjs substitutes it when it assembles styles.css. See CONTRIBUTING.md. */
 
-*/
+.heading-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-ui-small);
+}
+
+.heading-preview-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.heading-folder-row .setting-item-name {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  overflow-wrap: anywhere;
+}
+
+.heading-folder-add {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0 18px 1.5em;
+}
+
+.heading-folder-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.heading-folder-addbtn {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.heading-folder-addbtn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Priority order among the installed linker plugins. Our own row is the movable one, so
+   it is the one that reads as active; the others are context. */
+.heading-precedence-list {
+  margin: 0 0 18px 1.5em;
+}
+
+.heading-precedence-list .setting-item {
+  border-top: none;
+  /* Padding matches the folder-list rows, so this nested list lines up with the other one in the same pane: text off the left edge, arrows level with the remove buttons. */ padding: 4px 6px 4px 0.75em;
+}
+
+.heading-precedence-list .setting-item-name {
+  color: var(--text-muted);
+}
+
+.heading-precedence-self .setting-item-name {
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+}
+
+/* Styles both prose linkers use. The plugin class prefix is substituted by build.mjs. */
 
 .heading-link,
 .cm-heading-link {
@@ -72,15 +103,6 @@ a.heading-link.internal-link:hover {
 .cm-heading-ambiguous:hover {
   border-bottom-width: 3px;
   border-bottom-style: var(--heading-ambiguous-underline-style, double);
-}
-
-/* Heading-level (H1..H6) checkbox row in settings */
-.heading-level-check {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: 10px;
-  cursor: pointer;
 }
 
 /* Autocomplete suggestion rows */
@@ -139,12 +161,6 @@ a.heading-link.internal-link:hover {
   width: 100%;
 }
 
-.heading-preview-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--font-ui-small);
-}
-
 .heading-preview-table td,
 .heading-preview-table th {
   border-bottom: 1px solid var(--background-modifier-border);
@@ -161,13 +177,6 @@ a.heading-link.internal-link:hover {
 .heading-preview-empty {
   color: var(--text-muted);
   padding: 12px 0;
-}
-
-.heading-preview-buttons {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  margin-top: 16px;
 }
 
 .heading-section-desc {
@@ -189,7 +198,9 @@ a.heading-link.internal-link:hover {
   color: var(--text-error);
 }
 
-.setting-item.mod-warning .extra-setting-button {
+/* Scoped to our own rows: `.setting-item.mod-warning` on its own would restyle the warning
+   rows in every other plugin's settings too. */
+.heading-lang-row.mod-warning .extra-setting-button {
   color: var(--text-error);
   opacity: 1;
 }
@@ -200,55 +211,12 @@ a.heading-link.internal-link:hover {
 .heading-folder-rows:not(:empty) {
   margin: 6px 0;
 }
+
 .heading-folder-row.setting-item {
   border-top: none;
   padding: 4px 6px 4px 0.75em;
   margin-left: 1.5em;
   border-left: 2px solid var(--background-modifier-border);
-}
-.heading-folder-row .setting-item-name {
-  font-family: var(--font-monospace);
-  font-size: var(--font-ui-smaller);
-  overflow-wrap: anywhere;
-}
-.heading-folder-add {
-  display: flex;
-  gap: 8px;
-  margin: 6px 0 18px 1.5em;
-}
-.heading-folder-input {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.heading-folder-addbtn {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-.heading-folder-addbtn svg {
-  width: 16px;
-  height: 16px;
-}
-
-/* Priority order among the installed linker plugins. Our own row is the movable one, so
-   it is the one that reads as active; the others are context. */
-.heading-precedence-list {
-  margin: 0 0 18px 1.5em;
-}
-.heading-precedence-list .setting-item {
-  border-top: none;
-  /* Padding matches the folder-list rows, so this nested list lines up with the other
-     one in the same pane: text off the left edge, arrows level with the remove buttons. */
-  padding: 4px 6px 4px 0.75em;
-}
-.heading-precedence-list .setting-item-name {
-  color: var(--text-muted);
-}
-.heading-precedence-self .setting-item-name {
-  color: var(--text-normal);
-  font-weight: var(--font-semibold);
 }
 
 /* The list of what a word could mean, shown on hover over an ambiguous span. Hovering a
@@ -263,22 +231,74 @@ a.heading-link.internal-link:hover {
   background: var(--background-primary);
   box-shadow: var(--shadow-s);
 }
+
 .heading-choices.heading-hidden {
   display: none;
 }
+
 .heading-choices-title {
   padding: 2px 8px 6px;
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
 }
+
 .heading-choices-item {
   padding: 4px 8px;
   border-radius: var(--radius-s);
   cursor: pointer;
   overflow-wrap: anywhere;
 }
+
 .heading-choices-item:hover {
   background: var(--background-modifier-hover);
+}
+
+/* @settings
+
+name: Heading Linker
+id: heading-linker
+settings:
+  -
+    id: heading-link-color
+    title: Highlight color
+    description: Color of heading-term highlights. Leave at default to follow the theme's link color.
+    type: variable-themed-color
+    format: hex
+    opacity: false
+    default-light: '#705dcf'
+    default-dark: '#a68cff'
+  -
+    id: heading-underline-style
+    title: Underline style
+    type: variable-select
+    default: dotted
+    options:
+      - dotted
+      - solid
+      - dashed
+      - double
+      - none
+  -
+    id: heading-ambiguous-underline-style
+    title: Ambiguous-term underline style
+    description: Underline for words that match more than one heading.
+    type: variable-select
+    default: double
+    options:
+      - double
+      - dotted
+      - dashed
+      - solid
+
+*/
+
+/* Heading-level (H1..H6) checkbox row in settings */
+.heading-level-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 10px;
+  cursor: pointer;
 }
 
 /* Heading Linker 1.1.0 */

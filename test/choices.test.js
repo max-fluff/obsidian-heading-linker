@@ -5,7 +5,7 @@
 // own component.
 
 const { describe, it, assert } = require('../src/shared/testing/harness');
-const { installStubs } = require('./stubs/app');
+const { installStubs } = require('../src/shared/testing/stubs');
 
 installStubs();
 

@@ -63,18 +63,4 @@ module.exports = {
     }
     return null;
   },
-
-  // Index-change subscription, used by the API and by anything that has to redraw when the
-  // headings move. Returns an unsubscribe function.
-  onIndexChange(cb) {
-    if (typeof cb !== 'function') return () => {};
-    this._indexListeners.add(cb);
-    return () => this._indexListeners.delete(cb);
-  },
-
-  notifyIndexChange() {
-    for (const cb of this._indexListeners) {
-      try { cb(); } catch (e) { console.error('Heading Linker: index listener failed', e); }
-    }
-  },
 };

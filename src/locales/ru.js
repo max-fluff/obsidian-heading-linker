@@ -20,11 +20,6 @@ module.exports = {
 
   'statusBar.aria': 'Заголовков на странице: {n} — нажмите, чтобы связать',
 
-  'noun.file': 'файл',
-  'noun.folder': 'папку',
-  'scope.first': 'первое',
-  'scope.all': 'все',
-
   'menu.unlinkThisLink': 'Убрать эту ссылку',
   'menu.collectThisAlias': 'Собрать этот алиас',
   'menu.collectFromNote': 'Собрать алиасы заголовков из ссылок',
@@ -37,13 +32,8 @@ module.exports = {
   'menu.removeFromScope': 'Heading: убрать {noun} из области',
   'menu.includeInScope': 'Heading: включить {noun} в область',
 
-  'menu.linkThisWord': 'Связать «{display}»',
-  'menu.linkHere': 'Связать «{display}» здесь',
   'menu.linkScopeThisNote': 'Связать {scope} «{display}» в этой заметке',
   'menu.linkScopeAllNotes': 'Связать {scope} «{display}» во всех заметках',
-  'menu.linkDisplayTo': 'Связать «{display}» с…',
-  'menu.linkScopeTo': 'Связать {scope} «{display}» с…',
-  'menu.openThisWord': 'Открыть «{display}»',
   'menu.openTitle': 'Какой заголовок открыть?',
   'menu.openNewTabTitle': 'Какой заголовок открыть в новой вкладке?',
 
@@ -53,20 +43,14 @@ module.exports = {
   'exclude.remove': 'Убрать «{value}» из {noun}',
   'exclude.removePrefixed': 'Heading: убрать «{value}» из {noun}',
 
-
   'modal.materialize.title': 'Превратить слова в ссылки на заголовки',
   'modal.materialize.summary': 'Проверка: файлов — {files}, замен — {replacements}.',
   'modal.materialize.ambiguous': '{n} слов(о) совпадает с несколькими заголовками — выберите или пропустите:',
   'modal.leftAsText': '(оставлено текстом)',
   'modal.skipOption': 'пропустить',
-  'modal.andMore': '…и ещё {n}',
   'modal.unlink.title': 'Убрать ссылки на заголовки',
   'modal.unlink.summary': 'Проверка: файлов — {files}, ссылок — {links}.',
-  'modal.choose.title': 'Какое из совпадений?',
   'modal.choose.body': 'У этого слова несколько совпадений.',
-
-  'btn.apply': 'Применить',
-  'btn.cancel': 'Отмена',
 
   'label.selection': 'Выделение',
 
@@ -123,7 +107,6 @@ module.exports = {
   'set.headingAliases.name': 'Алиасы заголовков',
   'set.headingAliases.desc': 'Читать комментарии `%% alias: a, b %%` под заголовком как доп. формулировки, ведущие на него. Выключите, чтобы не читать тела файлов (быстрее в очень больших хранилищах).',
 
-  'set.heading.scope': 'Область',
   'set.scopeMode.name': 'Где связывать',
   'set.scopeMode.desc': 'В каких заметках слова подсвечиваются и превращаются в ссылки.',
   'set.scopeMode.folders': 'Только выбранные папки',
@@ -137,7 +120,6 @@ module.exports = {
   'set.folderList.addAria': 'Добавить папку',
   'set.termsIndexed': 'В индексе: {terms}.',
 
-  'set.heading.matching': 'Сопоставление',
   'set.matchMode.name': 'Режим сопоставления',
   'set.matchMode.desc': 'Как приводятся словоформы перед сравнением.',
   'set.matchMode.stemmer': 'Стеммер (лучше для всех форм)',
@@ -149,43 +131,27 @@ module.exports = {
   'set.smartCase.desc': 'Заголовки из заглавных букв (например «IT» или «NASA») сопоставляются с учётом регистра, чтобы не цеплять обычные слова.',
   'set.headingLevels.name': 'Уровни заголовков',
   'set.headingLevels.desc': 'Какие уровни заголовков (H1–H6) становятся терминами для ссылок.',
-  'set.languages.name': 'Языки',
   'set.languages.desc': 'Включено {enabled} из {total}',
   'set.languages.invalidSuffix': ', {n} с ошибкой',
-  'set.languages.show': 'Показать языки',
-  'set.languages.hide': 'Скрыть языки',
-  'set.lang.higher': 'Выше приоритет',
-  'set.lang.lower': 'Ниже приоритет',
   'set.lang.invalid': 'Ошибка: {error}',
-  'set.linkFirstOnly.name': 'Связывать только первое вхождение',
   'set.linkFirstOnly.desc': 'Связывать только первое упоминание каждого заголовка в заметке.',
   'set.excludeTerms.name': 'Исключённые заголовки',
   'set.excludeTerms.desc': 'Тексты заголовков, полностью убираемые из индекса, по одному в строке. Их словоформы тоже перестают связываться.',
 
-  'set.heading.highlighting': 'Подсветка',
-  'set.highlightInReading.name': 'Подсветка в режиме чтения',
   'set.highlightInReading.desc': 'Подчёркивать совпавшие слова в отрисованных заметках.',
   'set.editingHighlight.name': 'Подсветка в редакторе',
   'set.editingHighlight.desc': 'Подчёркивать совпавшие слова при редактировании.',
   'set.editingHighlight.off': 'Выкл',
   'set.editingHighlight.live': 'На лету',
-  'set.editingHighlight.onSave': 'При сохранении',
-  'set.skipHeadings.name': 'Пропускать заголовки',
   'set.skipHeadings.desc': 'Не связывать слова внутри собственных заголовков заметки.',
-  'set.statusBar.name': 'Счётчик в строке состояния',
   'set.statusBar.desc': 'Показывать, сколько заголовков упомянуто в текущей заметке.',
   'set.statusBarIncludeLinks.name': 'Считать и уже связанные',
   'set.statusBarIncludeLinks.desc': 'Учитывать в счётчике уже проставленные ссылки на заголовки.',
 
-  'set.heading.autocomplete': 'Автодополнение',
-  'set.linkSuggest.name': 'Подсказывать ссылки при наборе',
   'set.linkSuggest.desc': 'Предлагать превратить слово в ссылку на заголовок по мере набора.',
   'set.suggestMinChars.name': 'Минимум символов',
-  'set.suggestMinChars.desc': 'Сколько символов набрать, прежде чем появятся подсказки.',
-  'set.suggestSkipAfter.name': 'Пропускать после символов',
   'set.suggestSkipAfter.desc': 'Не подсказывать, если слово идёт после одного из этих символов.',
 
-  'set.heading.contextMenu': 'Контекстное меню',
   'set.menuTurnInto.name': 'Действия связывания',
   'set.menuTurnInto.desc': 'Показывать пункты «связать с заголовком» на подсвеченном слове.',
   'set.menuOpen.name': 'Действия открытия',
@@ -197,18 +163,11 @@ module.exports = {
   'set.menuCollect.name': 'Пункты «Собрать алиасы»',
   'set.menuCollect.desc': 'Предлагать собрать текст ссылки как алиас заголовка — на самой ссылке и для всей заметки из её контекстного меню.',
 
-  'set.heading.maintenance': 'Обслуживание',
   'set.rebuild.name': 'Перестроить индекс',
   'set.rebuild.desc': 'Заново просканировать файлы-глоссарии на заголовки.',
-  'set.rebuild.button': 'Перестроить',
 
   'plural.term': { one: '{n} заголовок', few: '{n} заголовка', many: '{n} заголовков', other: '{n} заголовка' },
   'plural.alias': { one: '{n} алиас', few: '{n} алиаса', many: '{n} алиасов', other: '{n} алиаса' },
   'plural.file': { one: '{n} файл', few: '{n} файла', many: '{n} файлов', other: '{n} файла' },
   'plural.link': { one: '{n} ссылка', few: '{n} ссылки', many: '{n} ссылок', other: '{n} ссылки' },
-  'set.precedence.name': 'Приоритет среди плагинов-линкеров',
-  'set.precedence.desc': 'Слово или ссылку, на которые претендуют несколько линкеров, забирает тот, кто выше в списке. Отсюда двигается только этот плагин — остальные из своих настроек.',
-  'set.precedence.other': 'Двигается из своих настроек',
-  'set.precedence.up': 'Выше',
-  'set.precedence.down': 'Ниже',
 };

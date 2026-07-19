@@ -4,7 +4,7 @@
 // a vault with one linker installed, and moving a row writes only our own number.
 
 const { describe, it, assert } = require('../src/shared/testing/harness');
-const { obsidianStub } = require('./stubs/app');
+const { obsidianStub } = require('../src/shared/testing/stubs');
 const { renderPrecedence, precedenceForIndex, rankedLinkers } = require('../src/shared/precedence');
 
 const provider = (id, precedence) => ({ id, apiVersion: 1, precedence, displayName: id });

@@ -10,8 +10,9 @@ const matcher = require('./matcher');
 const highlight = require('./highlight');
 const materialize = require('./materialize');
 const api = require('./api');
+const indexEvents = require('./shared/index-events');
 const { HeadingSuggest, suggestAvailable } = require('./heading-suggest');
-const { initI18n, t, plural } = require('./shared/i18n');
+const { initI18n, withFamily, t, plural } = require('./shared/i18n');
 const { menuSection } = require('./shared/menu');
 const aliases = require('./aliases');
 const { ChoicePopover } = require('./shared/prose/choices');
@@ -52,7 +53,7 @@ const NOTICE_KEYS = {
 
 class HeadingLinkerPlugin extends Plugin {
   async onload() {
-    initI18n({ en: require('./locales/en'), ru: require('./locales/ru') });
+    initI18n(withFamily('prose', { en: require('./locales/en'), ru: require('./locales/ru') }));
 
     const loaded = await this.loadData();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
@@ -623,6 +624,6 @@ class HeadingLinkerPlugin extends Plugin {
   }
 }
 
-Object.assign(HeadingLinkerPlugin.prototype, matcher, highlight, materialize, aliases, api);
+Object.assign(HeadingLinkerPlugin.prototype, matcher, highlight, materialize, aliases, api, indexEvents);
 
 module.exports = HeadingLinkerPlugin;
