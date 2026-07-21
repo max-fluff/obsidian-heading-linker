@@ -121,7 +121,9 @@ Both lists are editable from the settings tab, the file explorer's right-click m
 
 ## Morphology and languages
 
-Matching reduces each word to a stem so different forms of the same word collapse together. Eight languages are built in — English, Russian, Ukrainian, German, Spanish, French, Latin and Greek — and you choose which are active and in what priority order. On first run the plugin enables English plus your Obsidian interface language, if a module exists for it. Latin and Greek stay off by default and are aimed at scholarly notes that quote classical terms; English on its own already links the common latinised plurals (`indices`/`index`, `phenomena`/`phenomenon`).
+Matching reduces each word to a stem so different forms of the same word collapse together. Eight languages are built in — English, Russian, Ukrainian, German, Spanish, French, Latin and Greek — and you choose which are active and in what priority order. On first run the plugin enables English plus your Obsidian interface language, if a module exists for it.
+
+The stemmer handles the regular forms; the irregular plurals sit in three tables — classical (`cacti → cactus`, `indices → index`), native (`mice → mouse`, `children → child`) and `-f/-ves` (`wolves → wolf`, `lives → life`). The tables apply to a compound's last word too, so `grandchildren → grandchild` and `salespeople → salesperson`. Greek `-sis` nouns are too many to list, so they follow a rule instead: `prognoses → prognosis`, `neurogeneses → neurogenesis`. An invariant plural like `moose` needs nothing. Latin and Greek stay off by default and are aimed at scholarly notes quoting classical terms; the latinised plurals an English note actually uses are already in English.
 
 Enable only the languages your vault actually uses: since same-script languages combine, leaving German on in an English-only vault can occasionally over-stem a word. The **Match mode** setting also offers a lighter ending-strip or an exact (case-insensitive) mode instead of the full stemmer.
 
@@ -206,7 +208,7 @@ Most bundled language modules port well-known, permissively-licensed stemming al
 |---|---|---|---|
 | `ru.js` | Snowball Russian stemmer (Porter framework) | BSD (© 2001–2006 M. Porter & R. Boulton) | [snowballstem.org](https://snowballstem.org/algorithms/russian/stemmer.html) · [license](https://snowballstem.org/license.html) |
 | `uk.js` | Light suffix stemmer with vowel alternation | MIT (this plugin) | — |
-| `en.js` | Porter stemmer (M. F. Porter, 1980) | Free use, released by the author | [tartarus.org](https://tartarus.org/martin/PorterStemmer/) |
+| `en.js` | Porter stemmer (M. F. Porter, 1980), plus irregular-plural tables of the plugin's own | Free use for the stemmer, MIT for the tables | [tartarus.org](https://tartarus.org/martin/PorterStemmer/) |
 | `es.js` | Apache Lucene `SpanishLightStemmer` (UniNE, J. Savoy) | Apache License 2.0 | [source](https://github.com/apache/lucene/blob/main/lucene/analysis/common/src/java/org/apache/lucene/analysis/es/SpanishLightStemmer.java) |
 | `de.js` | Apache Lucene `GermanLightStemmer` (UniNE, J. Savoy) | Apache License 2.0 | [source](https://github.com/apache/lucene/blob/main/lucene/analysis/common/src/java/org/apache/lucene/analysis/de/GermanLightStemmer.java) |
 | `fr.js` | Apache Lucene `FrenchLightStemmer` (UniNE, J. Savoy) | Apache License 2.0 | [source](https://github.com/apache/lucene/blob/main/lucene/analysis/common/src/java/org/apache/lucene/analysis/fr/FrenchLightStemmer.java) |
