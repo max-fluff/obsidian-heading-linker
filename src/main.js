@@ -530,8 +530,15 @@ class HeadingLinkerPlugin extends Plugin {
     this.updateStatusBar();
   }
 
+  // By path, not basename: a bare basename resolves case-insensitively, so Guide and guide open
+  // one file. The heading text holds no []|#^ (the index drops those), so it is a safe subpath.
+  linktextFor(linktext) {
+    const term = (this.terms || []).find((t) => t.linktext === linktext);
+    return term ? `${term.path}#${term.label}` : linktext;
+  }
+
   openTerm(linktext, sourcePath, newTab) {
-    this.app.workspace.openLinkText(linktext, sourcePath || '', newTab);
+    this.app.workspace.openLinkText(this.linktextFor(linktext), sourcePath || '', newTab);
   }
 
   activePath() {
@@ -547,7 +554,7 @@ class HeadingLinkerPlugin extends Plugin {
       source: hoverParent ? 'heading-linker-choice' : 'heading-linker',
       hoverParent: hoverParent || this,
       targetEl,
-      linktext,
+      linktext: this.linktextFor(linktext),
       sourcePath: sourcePath || '',
     });
   }
