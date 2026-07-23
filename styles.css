@@ -1,4 +1,4 @@
-/* Heading Linker 1.2.1 — assembled from the shared styles and src/styles.css by "npm run build". Do not edit directly. */
+/* Heading Linker 1.3.0 — assembled from the shared styles and src/styles.css by "npm run build". Do not edit directly. */
 
 /* Styles every linker plugin uses. The token below stands for the plugin class prefix;
    build.mjs substitutes it when it assembles styles.css. See CONTRIBUTING.md. */
@@ -317,4 +317,4 @@ settings:
   cursor: pointer;
 }
 
-/* Heading Linker 1.2.1 */
+/* Heading Linker 1.3.0 */
