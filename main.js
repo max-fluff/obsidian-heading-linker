@@ -1,4 +1,4 @@
-/* Heading Linker 1.3.0 — bundled from src/ by esbuild. Do not edit directly; edit src/ and run "npm run build". */
+/* Heading Linker 1.2.2 — bundled from src/ by esbuild. Do not edit directly; edit src/ and run "npm run build". */
 "use strict";
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __commonJS = (cb, mod) => function __require() {
