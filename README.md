@@ -12,7 +12,7 @@
 
 Finds words in your notes and turns them into links to matching **headings** inside files you nominate as glossaries — in any word form (declensions, plurals), not just exact spellings. Keep a `Guide.md` with a `## Projectile` heading, and every "projectile", "projectiles" or other form elsewhere gets highlighted and can become `[[Guide#Projectile|projectiles]]`: a real link that opens the file at that heading, with the note's own wording kept as the visible text.
 
-It's the file-based sibling of [Glossary Linker](https://community.obsidian.md/plugins/glossary-linker) — that one treats each note as a term, this one treats each heading inside a chosen file as a term, on the same matching engine.
+> **Links headings as terms — it won't treat a whole note as one.** If you want words to link to whole **notes**, and to collect new aliases from links you've already made by hand, that's what this plugin leaves out, and its sibling [Glossary Linker](https://community.obsidian.md/plugins/glossary-linker) does exactly that, on the same matching engine. The two are made to work together.
 
 Available in the Obsidian community catalog: **[community.obsidian.md/plugins/heading-linker](https://community.obsidian.md/plugins/heading-linker)**.
 
@@ -242,7 +242,7 @@ In an existing clone without the submodule, run `git submodule update --init` fi
 - `materialize.js` — turning matches into links and reverting them, plus the link context menu.
 - `modals.js` — the materialize/unlink preview dialogs and the choose-heading dialog.
 - `settings-tab.js` — the settings UI.
-- `folder-suggest.js` — path autocomplete for the source/scope lists (feature-detected).
+- `vault-suggest.js` — vault path autocomplete for the source/scope lists (feature-detected).
 - `heading-suggest.js` — the editor autocomplete (`EditorSuggest`, feature-detected).
 - `shared/` — git submodule shared with the sibling plugins: markdown helpers, the i18n engine, the folder-list settings editor, and `morphology/` (the language modules, their contract and `validateLanguage()`).
 - `locales/` — interface strings (English and Russian), fed to the shared i18n engine.

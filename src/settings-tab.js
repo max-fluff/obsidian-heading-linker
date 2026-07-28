@@ -1,7 +1,7 @@
 'use strict';
 
 const { PluginSettingTab, Setting, Notice } = require('obsidian');
-const { PathSuggest, folderSuggestAvailable } = require('./shared/prose/folder-suggest');
+const { VaultPathSuggest, suggestAvailable } = require('./shared/prose/vault-suggest');
 const { sanitizeFolder } = require('./constants');
 const { t, plural } = require('./shared/i18n');
 const { renderPrecedenceSetting } = require('./shared/precedence');
@@ -26,8 +26,8 @@ class HeadingLinkerSettingTab extends PluginSettingTab {
     const saveSources = async (force) => { await this.plugin.saveSettings(); await this.plugin.loadAliases(force); this.plugin.rerenderViews(); this.plugin.updateStatusBar(); this.renderStatus(); };
 
     const sections = createProseSettings(this, { cls: 'heading', save });
-    const attachSuggest = folderSuggestAvailable()
-      ? (inputEl, onPick) => new PathSuggest(this.app, inputEl, onPick)
+    const attachSuggest = suggestAvailable()
+      ? (inputEl, onPick) => new VaultPathSuggest(this.app, inputEl, onPick)
       : null;
 
     new Setting(containerEl).setName(t('set.heading.sources')).setHeading();
