@@ -37,6 +37,7 @@ The plugin ships as `main.js`, `manifest.json` and `styles.css`. Eight language 
 - [Settings](#settings)
 - [Skipped contexts](#skipped-contexts)
 - [Performance](#performance)
+- [Public API](#public-api)
 - [Licenses & credits](#licenses--credits)
 - [Development](#development)
 - [Installation](#installation)
@@ -201,6 +202,30 @@ Words are never linked (and suggestions never fire) inside code blocks (` ``` ` 
 ## Performance
 
 Rebuilding the index never reads file bodies — it works from Obsidian's metadata cache. Alias comments are the one thing that needs the body; they are read once per file, cached, and re-read only when that file changes, so a rebuild triggered by a settings change costs nothing extra. In whole-vault sourcing you can turn alias reading off completely. The per-keystroke check that suppresses suggestions in code, links and comments tests only the cursor position, not the whole document.
+
+The usage and candidate scans behind the [public API](#public-api) are cached per note: a second call only re-reads notes whose file changed, and the cache drops itself whenever the heading index is rebuilt, so counts never lag the headings.
+
+## Public API
+
+The plugin exposes a small read-only API at `app.plugins.plugins['heading-linker'].api`, so other plugins and DataviewJS can read the heading index:
+
+| Method | Returns |
+|---|---|
+| `getTerms()` | every indexed heading: `{ linktext, label, fileBase, path, aliases }` (`linktext` is the `File#Heading` a link resolves against) |
+| `resolveTerm(name)` | the heading a label or alias (case-insensitive) belongs to, or `null` |
+| `keysFor(word)` / `lemmaFor(word)` | the morphology keys / base form of a word, the same engine the matcher uses |
+| `findMatches(text)` | heading matches in arbitrary text (protected spans skipped) |
+| `getUsageReport(opts?)` | async; per heading, how many times it is used across in-scope notes and in which files — headings with `count: 0` are unused. Counts plain-text mentions; pass `{ includeLinks: true }` to also count existing `[[File#Heading]]` links, `{ wholeVault: true }` to scan every note |
+| `collectCandidates()` | async; frequent in-scope words that are not yet a heading: `{ lemma, display, count, docFreq }`, ordered by how many notes they appear in |
+| `onChange(cb)` | subscribe to index rebuilds; returns an unsubscribe function |
+
+An "unused headings" list in DataviewJS, for example:
+
+```js
+const api = app.plugins.plugins['heading-linker'].api;
+const report = await api.getUsageReport({ includeLinks: true });
+dv.list(report.filter((r) => r.count === 0).map((r) => r.linktext));
+```
 
 ## Licenses & credits
 

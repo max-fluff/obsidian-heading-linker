@@ -68,10 +68,21 @@ module.exports = Object.assign({}, core, {
     }
     this.index = { byKey, termCount: linktexts.size };
     this.terms = terms;
+    // Bumped so the usage/candidate caches drop results scanned against the old headings.
+    this.indexVersion = (this.indexVersion || 0) + 1;
     // Notified here rather than by the callers, so every rebuild reaches api subscribers.
     // It used to be fired only from scheduleRebuild, which meant a rebuild triggered
     // straight from the settings tab or the "Rebuild index" button changed the index
     // without telling anyone — the glossary linker had it right.
     this.notifyIndexChange();
+  },
+
+  // Base (dictionary) form of a word: the first claiming language that has one wins, else
+  // the lowercased word. Same rule the glossary linker uses to collapse inflected forms.
+  lemmaFor(word) {
+    for (const lang of this.activeLanguages || []) {
+      if (lang.match(word) && lang.lemma) return lang.lemma(word);
+    }
+    return String(word || '').toLowerCase();
   },
 });
