@@ -19,7 +19,7 @@ function collectSuggestions(plugin, query, ownFile) {
     for (const c of bucket) {
       if (c.wordCount !== 1 || seenCand.has(c) || c.fileBase === ownFile) continue;
       seenCand.add(c);
-      if (!byLink.has(c.linktext)) byLink.set(c.linktext, { linktext: c.linktext, label: c.label, fileBase: c.fileBase, kind: 'form' });
+      if (!byLink.has(c.linktext)) byLink.set(c.linktext, { linktext: c.linktext, label: c.label, fileBase: c.fileBase, crumbs: c.crumbs, kind: 'form' });
     }
   }
 
@@ -29,7 +29,7 @@ function collectSuggestions(plugin, query, ownFile) {
     let form = null;
     if (term.label.toLowerCase().startsWith(qLower)) form = term.label;
     else if (term.aliases) form = term.aliases.find((a) => a.toLowerCase().startsWith(qLower));
-    if (form) byLink.set(term.linktext, { linktext: term.linktext, label: term.label, fileBase: term.fileBase, kind: 'prefix', matchedForm: form });
+    if (form) byLink.set(term.linktext, { linktext: term.linktext, label: term.label, fileBase: term.fileBase, crumbs: term.crumbs, kind: 'prefix', matchedForm: form });
   }
 
   const items = [...byLink.values()];
@@ -38,14 +38,20 @@ function collectSuggestions(plugin, query, ownFile) {
   return items.slice(0, 8);
 }
 
+// The file plus the enclosing headings, so a suggestion says where it sits — the same trail
+// the ambiguity picker shows.
+function locationOf(item) {
+  return [item.fileBase, ...(item.crumbs || [])].join(' › ');
+}
+
 // The line under a candidate's name in the popup. Shared by our own rendering and by the
 // shape we hand a sibling linker, so a heading reads the same whoever's popup it lands in.
 function noteFor(item) {
-  if (item.kind === 'form') return t('suggest.inflection', { file: item.fileBase });
+  if (item.kind === 'form') return t('suggest.inflection', { file: locationOf(item) });
   if (item.matchedForm && item.matchedForm.toLowerCase() !== item.label.toLowerCase()) {
-    return t('suggest.alias', { form: item.matchedForm, file: item.fileBase });
+    return t('suggest.alias', { form: item.matchedForm, file: locationOf(item) });
   }
-  return item.fileBase;
+  return locationOf(item);
 }
 
 // Our candidates in the shape a sibling linker consumes: no internals, and `display` says

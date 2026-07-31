@@ -265,7 +265,7 @@ class HeadingLinkerPlugin extends Plugin {
       name: t('cmd.collectThisNote'),
       callback: () => { const f = this.app.workspace.getActiveFile(); if (f) this.collectAliasesFromNote(f); },
     });
-    this.addCommand({ id: 'rebuild-index', name: t('cmd.rebuildIndex'), callback: () => { this.rebuildIndex(); new Notice(t('notice.indexRebuilt')); } });
+    this.addCommand({ id: 'rebuild-index', name: t('cmd.rebuildIndex'), callback: () => { this.rebuildIndex(); new Notice(t('notice.indexRebuilt')); this.warnDuplicateHeadings(); } });
 
     // Path-list toggles for the active note (the command-palette twin of the explorer menu).
     // Each is available only when it would change something, so add/remove never both show.
@@ -448,6 +448,15 @@ class HeadingLinkerPlugin extends Plugin {
   labelOf(linktext) {
     const i = linktext.indexOf('#');
     return i >= 0 ? linktext.slice(i + 1) : linktext;
+  }
+
+  // After a user-run rebuild, flag headings that repeat inside one file: only the first is
+  // reachable by [[File#Heading]], so the rest silently never link. Details to the console.
+  warnDuplicateHeadings() {
+    const dups = this.duplicateHeadings || [];
+    if (!dups.length) return;
+    new Notice(t('notice.duplicateHeadings', { n: dups.length }));
+    for (const d of dups) console.warn(`Heading Linker: "${d.label}" repeats in ${d.path} — only the first is linkable`);
   }
 
   // Parse the inside of a [[...]] as a heading link, or null if it carries no #subpath.

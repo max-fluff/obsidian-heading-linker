@@ -74,6 +74,7 @@ module.exports = {
   'notice.scanningProgress': 'Scanning {current}/{total}…',
   'notice.scopeWritten': 'Wrote {links} across {files}.',
   'notice.indexRebuilt': 'Heading index rebuilt.',
+  'notice.duplicateHeadings': '{n} heading(s) repeat inside a file — only the first of each can be linked. See the console for which.',
   'notice.aliasAdded': 'Heading Linker: “{alias}” added as an alias of “{term}”',
   'notice.aliasExists': 'Heading Linker: “{term}” already matches “{alias}”',
   'notice.aliasesAdded': 'Heading Linker: {aliases} added',

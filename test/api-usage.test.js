@@ -107,6 +107,15 @@ describe('resolveHeadingLink', () => {
   });
 });
 
+describe('api: describe carries the breadcrumb', () => {
+  it('shows file › ancestors in the note, so two same-named headings are told apart', () => {
+    const nested = { base: 'Guide', headings: [{ text: 'Combat', level: 1 }, { text: 'Spawn', level: 2 }] };
+    const d = makePlugin({ files: [nested] }).buildApi().linker.describe('Guide#Spawn', 'spawn');
+    assert.strictEqual(d.title, 'Spawn');
+    assert.ok(d.note.includes('Guide › Combat'), `note was: ${d.note}`);
+  });
+});
+
 describe('api: lemmaFor', () => {
   it('reduces an inflected word to the base a heading would match', () => {
     const p = makePlugin();

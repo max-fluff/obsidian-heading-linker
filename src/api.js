@@ -52,7 +52,10 @@ module.exports = {
           const term = (plugin.terms || []).find((x) => x.linktext === target);
           const label = term ? term.label : String(target).split('#').pop();
           const file = term ? term.fileBase : String(target).split('#')[0];
-          const parts = [t('kind.heading'), aliasHit(plugin, term, label, display), file];
+          // File plus the enclosing headings, so two same-named headings are told apart by
+          // where they sit, not only by which file they live in.
+          const location = [file, ...((term && term.crumbs) || [])].join(' › ');
+          const parts = [t('kind.heading'), aliasHit(plugin, term, label, display), location];
           return { title: label, note: parts.filter(Boolean).join(' · ') };
         },
       }),

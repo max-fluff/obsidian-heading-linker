@@ -58,6 +58,7 @@ module.exports = {
   'notice.scanningProgress': 'Просмотр {current}/{total}…',
   'notice.scopeWritten': 'Записано {links} в {files}.',
   'notice.indexRebuilt': 'Индекс заголовков перестроен.',
+  'notice.duplicateHeadings': 'Заголовков, повторяющихся внутри файла: {n} — слинковать можно только первый из каждого. Подробности в консоли.',
   'notice.aliasAdded': 'Heading Linker: «{alias}» добавлен как псевдоним «{term}»',
   'notice.aliasExists': 'Heading Linker: «{term}» уже совпадает с «{alias}»',
   'notice.aliasesAdded': 'Heading Linker: добавлено {aliases}',

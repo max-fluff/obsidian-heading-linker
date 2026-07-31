@@ -241,3 +241,47 @@ describe('isProtectedAt', () => {
     assert.ok(at('```\nspawn\n```', 'spawn'));
   });
 });
+
+describe('ancestor breadcrumbs', () => {
+  const nested = { base: 'Guide', headings: [
+    { text: 'Combat', level: 1 },
+    { text: 'Spawn', level: 2 },
+    { text: 'Projectile', level: 2 },
+    { text: 'Details', level: 3 },
+  ] };
+
+  it('records the enclosing headings, top-down, on each term', () => {
+    const p = makePlugin({ files: [nested] });
+    p.rebuildIndex();
+    const crumbs = (l) => p.terms.find((t) => t.label === l).crumbs;
+    assert.deepStrictEqual(crumbs('Combat'), []);
+    assert.deepStrictEqual(crumbs('Spawn'), ['Combat']);
+    assert.deepStrictEqual(crumbs('Projectile'), ['Combat']);
+    assert.deepStrictEqual(crumbs('Details'), ['Combat', 'Projectile']);
+  });
+
+  it('keeps a parent that is not itself a term as an ancestor', () => {
+    const p = makePlugin({ files: [nested], settings: { headingLevels: [2, 3] } });
+    p.rebuildIndex();
+    assert.strictEqual(p.terms.find((t) => t.label === 'Combat'), undefined, 'H1 is filtered out as a term');
+    assert.deepStrictEqual(p.terms.find((t) => t.label === 'Spawn').crumbs, ['Combat']);
+  });
+});
+
+describe('duplicate headings in one file', () => {
+  it('indexes the first and records the rest as unlinkable', () => {
+    const p = makePlugin({ files: [{ base: 'Guide', headings: [
+      { text: 'Spawn', level: 2 },
+      { text: 'Spawn', level: 2 },
+    ] }] });
+    p.rebuildIndex();
+    assert.strictEqual(p.terms.filter((t) => t.label === 'Spawn').length, 1, 'only the first is a term');
+    assert.deepStrictEqual(p.duplicateHeadings, [{ path: 'Guide.md', label: 'Spawn' }]);
+  });
+
+  it('leaves duplicateHeadings empty when every heading is distinct', () => {
+    const p = makePlugin({ files: [{ base: 'Guide', headings: [{ text: 'Spawn', level: 2 }, { text: 'Aim', level: 2 }] }] });
+    p.rebuildIndex();
+    assert.deepStrictEqual(p.duplicateHeadings, []);
+  });
+});

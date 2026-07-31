@@ -3187,6 +3187,7 @@ var require_matcher2 = __commonJS({
         const byKey = /* @__PURE__ */ new Map();
         const linktexts = /* @__PURE__ */ new Set();
         const terms = [];
+        const duplicates = [];
         const minTermLength = Math.max(1, this.settings.minTermLength || 1);
         const excludeTerms = new Set(splitLines2(this.settings.excludeTerms).map((s) => s.toLowerCase()));
         const levels = new Set(this.settings.headingLevels || [1, 2, 3, 4, 5, 6]);
@@ -3196,7 +3197,12 @@ var require_matcher2 = __commonJS({
           this.headingFingerprints.set(file.path, this.fileFingerprint(file));
           const base = file.basename;
           const aliasMap = this.aliasCache && this.aliasCache.get(file.path);
+          const stack = [];
           for (const { text: label, level } of headings) {
+            while (stack.length && stack[stack.length - 1].level >= level)
+              stack.pop();
+            const crumbs = stack.map((s) => s.text);
+            stack.push({ level, text: label });
             if (!levels.has(level))
               continue;
             if (/[[\]|#^]/.test(label))
@@ -3209,11 +3215,13 @@ var require_matcher2 = __commonJS({
             if (!labelEntry)
               continue;
             const linktext = `${base}#${label}`;
-            if (linktexts.has(linktext))
+            if (linktexts.has(linktext)) {
+              duplicates.push({ path: file.path, label });
               continue;
+            }
             linktexts.add(linktext);
             const aliases2 = aliasMap && aliasMap.get(label) || [];
-            terms.push({ linktext, label, fileBase: base, path: file.path, aliases: aliases2 });
+            terms.push({ linktext, label, fileBase: base, path: file.path, aliases: aliases2, crumbs });
             const forms = [labelEntry];
             for (const a of aliases2) {
               if (a.toLowerCase() === label.toLowerCase() || a.trim().length < minTermLength)
@@ -3223,7 +3231,7 @@ var require_matcher2 = __commonJS({
                 forms.push(entry);
             }
             for (const f of forms) {
-              const matcher2 = Object.assign({ linktext, label, fileBase: base }, f);
+              const matcher2 = Object.assign({ linktext, label, fileBase: base, crumbs }, f);
               for (const k of f.words[0].keys) {
                 if (!byKey.has(k))
                   byKey.set(k, []);
@@ -3234,6 +3242,7 @@ var require_matcher2 = __commonJS({
         }
         this.index = { byKey, termCount: linktexts.size };
         this.terms = terms;
+        this.duplicateHeadings = duplicates;
         this.indexVersion = (this.indexVersion || 0) + 1;
         this.notifyIndexChange();
       },
@@ -4666,7 +4675,7 @@ var require_heading_suggest = __commonJS({
             continue;
           seenCand.add(c);
           if (!byLink.has(c.linktext))
-            byLink.set(c.linktext, { linktext: c.linktext, label: c.label, fileBase: c.fileBase, kind: "form" });
+            byLink.set(c.linktext, { linktext: c.linktext, label: c.label, fileBase: c.fileBase, crumbs: c.crumbs, kind: "form" });
         }
       }
       for (const term of plugin.terms || []) {
@@ -4678,20 +4687,23 @@ var require_heading_suggest = __commonJS({
         else if (term.aliases)
           form = term.aliases.find((a) => a.toLowerCase().startsWith(qLower));
         if (form)
-          byLink.set(term.linktext, { linktext: term.linktext, label: term.label, fileBase: term.fileBase, kind: "prefix", matchedForm: form });
+          byLink.set(term.linktext, { linktext: term.linktext, label: term.label, fileBase: term.fileBase, crumbs: term.crumbs, kind: "prefix", matchedForm: form });
       }
       const items = [...byLink.values()];
       const rank = (it) => it.kind === "form" ? 0 : 1;
       items.sort((a, b) => rank(a) - rank(b) || a.label.length - b.label.length || a.linktext.localeCompare(b.linktext));
       return items.slice(0, 8);
     }
+    function locationOf(item) {
+      return [item.fileBase, ...item.crumbs || []].join(" \u203A ");
+    }
     function noteFor(item) {
       if (item.kind === "form")
-        return t2("suggest.inflection", { file: item.fileBase });
+        return t2("suggest.inflection", { file: locationOf(item) });
       if (item.matchedForm && item.matchedForm.toLowerCase() !== item.label.toLowerCase()) {
-        return t2("suggest.alias", { form: item.matchedForm, file: item.fileBase });
+        return t2("suggest.alias", { form: item.matchedForm, file: locationOf(item) });
       }
-      return item.fileBase;
+      return locationOf(item);
     }
     function suggestionsFor(plugin, query, sourcePath) {
       if (!suggestionsAllowed(plugin, query, sourcePath))
@@ -4767,7 +4779,8 @@ var require_api = __commonJS({
               const term = (plugin.terms || []).find((x) => x.linktext === target);
               const label = term ? term.label : String(target).split("#").pop();
               const file = term ? term.fileBase : String(target).split("#")[0];
-              const parts = [t2("kind.heading"), aliasHit(plugin, term, label, display), file];
+              const location = [file, ...term && term.crumbs || []].join(" \u203A ");
+              const parts = [t2("kind.heading"), aliasHit(plugin, term, label, display), location];
               return { title: label, note: parts.filter(Boolean).join(" \xB7 ") };
             }
           })
@@ -5303,6 +5316,7 @@ var require_en2 = __commonJS({
       "notice.scanningProgress": "Scanning {current}/{total}\u2026",
       "notice.scopeWritten": "Wrote {links} across {files}.",
       "notice.indexRebuilt": "Heading index rebuilt.",
+      "notice.duplicateHeadings": "{n} heading(s) repeat inside a file \u2014 only the first of each can be linked. See the console for which.",
       "notice.aliasAdded": "Heading Linker: \u201C{alias}\u201D added as an alias of \u201C{term}\u201D",
       "notice.aliasExists": "Heading Linker: \u201C{term}\u201D already matches \u201C{alias}\u201D",
       "notice.aliasesAdded": "Heading Linker: {aliases} added",
@@ -5450,6 +5464,7 @@ var require_ru2 = __commonJS({
       "notice.scanningProgress": "\u041F\u0440\u043E\u0441\u043C\u043E\u0442\u0440 {current}/{total}\u2026",
       "notice.scopeWritten": "\u0417\u0430\u043F\u0438\u0441\u0430\u043D\u043E {links} \u0432 {files}.",
       "notice.indexRebuilt": "\u0418\u043D\u0434\u0435\u043A\u0441 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u0432 \u043F\u0435\u0440\u0435\u0441\u0442\u0440\u043E\u0435\u043D.",
+      "notice.duplicateHeadings": "\u0417\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u0432, \u043F\u043E\u0432\u0442\u043E\u0440\u044F\u044E\u0449\u0438\u0445\u0441\u044F \u0432\u043D\u0443\u0442\u0440\u0438 \u0444\u0430\u0439\u043B\u0430: {n} \u2014 \u0441\u043B\u0438\u043D\u043A\u043E\u0432\u0430\u0442\u044C \u043C\u043E\u0436\u043D\u043E \u0442\u043E\u043B\u044C\u043A\u043E \u043F\u0435\u0440\u0432\u044B\u0439 \u0438\u0437 \u043A\u0430\u0436\u0434\u043E\u0433\u043E. \u041F\u043E\u0434\u0440\u043E\u0431\u043D\u043E\u0441\u0442\u0438 \u0432 \u043A\u043E\u043D\u0441\u043E\u043B\u0438.",
       "notice.aliasAdded": "Heading Linker: \xAB{alias}\xBB \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D \u043A\u0430\u043A \u043F\u0441\u0435\u0432\u0434\u043E\u043D\u0438\u043C \xAB{term}\xBB",
       "notice.aliasExists": "Heading Linker: \xAB{term}\xBB \u0443\u0436\u0435 \u0441\u043E\u0432\u043F\u0430\u0434\u0430\u0435\u0442 \u0441 \xAB{alias}\xBB",
       "notice.aliasesAdded": "Heading Linker: \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u043E {aliases}",
@@ -5771,6 +5786,7 @@ var HeadingLinkerPlugin = class extends Plugin {
     this.addCommand({ id: "rebuild-index", name: t("cmd.rebuildIndex"), callback: () => {
       this.rebuildIndex();
       new Notice(t("notice.indexRebuilt"));
+      this.warnDuplicateHeadings();
     } });
     this.addPathCommand("add-source", t("cmd.addSource"), "glossarySources", true, (p) => this.settings.glossaryMode === "selected" && !this.pathListed("glossarySources", p));
     this.addPathCommand("remove-source", t("cmd.removeSource"), "glossarySources", false, (p) => this.pathListed("glossarySources", p));
@@ -5951,6 +5967,16 @@ var HeadingLinkerPlugin = class extends Plugin {
   labelOf(linktext) {
     const i = linktext.indexOf("#");
     return i >= 0 ? linktext.slice(i + 1) : linktext;
+  }
+  // After a user-run rebuild, flag headings that repeat inside one file: only the first is
+  // reachable by [[File#Heading]], so the rest silently never link. Details to the console.
+  warnDuplicateHeadings() {
+    const dups = this.duplicateHeadings || [];
+    if (!dups.length)
+      return;
+    new Notice(t("notice.duplicateHeadings", { n: dups.length }));
+    for (const d of dups)
+      console.warn(`Heading Linker: "${d.label}" repeats in ${d.path} \u2014 only the first is linkable`);
   }
   // Parse the inside of a [[...]] as a heading link, or null if it carries no #subpath.
   // Shared by the unlink scan and the cursor-hit lookup so both read links identically.

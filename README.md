@@ -109,7 +109,7 @@ The same heading text in two different files is two different terms. When a word
   <img src="docs/images/ambiguous-2.png" alt="The picker shown when acting on an ambiguous word" width="420">
 </p>
 
-Since the rows would otherwise read as the same heading twice, each carries a second line saying what it is and **which note it lives in** — that file is usually the only thing telling them apart. A row you reached through an alias rather than the heading's own text says so too, which answers the "why is this even on the list" question when the wording you clicked doesn't appear in the heading at all.
+Since the rows would otherwise read as the same heading twice, each carries a second line showing **where it sits** — its file and the headings that enclose it, as a breadcrumb like `Guide › Combat › Spawn`, so two same-named headings are told apart by their place, not only by their file. A row you reached through an alias rather than the heading's own text says so too, which answers the "why is this even on the list" question when the wording you clicked doesn't appear in the heading at all. The same breadcrumb shows in the autocomplete popup.
 
 ## Sources and scope
 
@@ -197,7 +197,7 @@ The highlight color and underline styles are exposed through **[Style Settings](
 
 ## Skipped contexts
 
-Words are never linked (and suggestions never fire) inside code blocks (` ``` ` and `~~~`), inline code, frontmatter, `%%` comments, existing `[[...]]` and `[..](..)` links, or URLs; a note's own headings are skipped too unless you turn that off. When a link is written into a Markdown table cell, the alias pipe is escaped so the row isn't broken. Headings that contain `|`, `#`, `[`, `]` or `^` are not indexed, because those characters can't sit inside a `[[File#Heading]]` target.
+Words are never linked (and suggestions never fire) inside code blocks (` ``` ` and `~~~`), inline code, frontmatter, `%%` comments, existing `[[...]]` and `[..](..)` links, or URLs; a note's own headings are skipped too unless you turn that off. When a link is written into a Markdown table cell, the alias pipe is escaped so the row isn't broken. Headings that contain `|`, `#`, `[`, `]` or `^` are not indexed, because those characters can't sit inside a `[[File#Heading]]` target. When the same heading text repeats inside one file only the first is indexed — `[[File#Heading]]` can't say which one it means — and a rebuild says how many were dropped (the details go to the console).
 
 ## Performance
 
