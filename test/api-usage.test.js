@@ -85,6 +85,28 @@ describe('api: collectCandidates', () => {
   });
 });
 
+describe('resolveHeadingLink', () => {
+  // The dest stub answers only to the bare path 'Guide', so a resolve that forwards the
+  // whole 'Guide#Spawn' to getFirstLinkpathDest returns null — this pins the slice.
+  const p = () => makePlugin({ files: [guide], notes: [note('N', '')], dest: { basename: 'Guide' } });
+
+  it('slices the #heading off before resolving the file', () => {
+    assert.deepStrictEqual(p().resolveHeadingLink('Guide#Spawn', 'N.md'), { file: { basename: 'Guide' }, heading: 'Spawn' });
+  });
+
+  it('resolves a same-note self-link against the note itself', () => {
+    // '#Spawn' has no path part, so it must fall back to the source note.
+    const plugin = makePlugin({ files: [{ base: 'N', headings: [{ text: 'Spawn', level: 2 }] }], notes: [note('N', '')] });
+    plugin.app.vault.getAbstractFileByPath = (pth) => (pth === 'N.md' ? { basename: 'N' } : null);
+    assert.deepStrictEqual(plugin.resolveHeadingLink('#Spawn', 'N.md'), { file: { basename: 'N' }, heading: 'Spawn' });
+  });
+
+  it('is null for a whole-note link with no heading', () => {
+    assert.strictEqual(p().resolveHeadingLink('Guide', 'N.md'), null);
+    assert.strictEqual(p().resolveHeadingLink('Guide#', 'N.md'), null);
+  });
+});
+
 describe('api: lemmaFor', () => {
   it('reduces an inflected word to the base a heading would match', () => {
     const p = makePlugin();

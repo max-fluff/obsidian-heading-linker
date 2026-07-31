@@ -4720,20 +4720,28 @@ var require_api = __commonJS({
       reportFiles(opts) {
         return opts.wholeVault ? this.app.vault.getMarkdownFiles() : this.getScopeFiles();
       },
-      // A "Basename#Heading" linktext for an existing wikilink, or null when it targets no
-      // indexed heading. Only links with a #heading subpath count towards heading usage.
-      linkToTerm(link, sourcePath, termSet) {
-        const hash = String(link || "").indexOf("#");
+      // The heading-source file and raw heading text a wikilink's `#heading` subpath points at,
+      // or null when it targets no heading in a source file. getFirstLinkpathDest resolves file
+      // paths only, so the subpath must be sliced off first — the whole "File#Heading" would be
+      // looked up as a file literally named that and never resolve.
+      resolveHeadingLink(link, sourcePath) {
+        const raw = String(link || "");
+        const hash = raw.indexOf("#");
         if (hash < 0)
           return null;
-        const pathPart = link.slice(0, hash);
-        const heading = link.slice(hash + 1);
+        const heading = raw.slice(hash + 1).trim();
         if (!heading)
           return null;
-        const dest = pathPart ? this.app.metadataCache.getFirstLinkpathDest(pathPart, sourcePath) : this.app.vault.getAbstractFileByPath(sourcePath);
-        if (!dest || !this.isGlossaryFile(dest))
+        const pathPart = raw.slice(0, hash);
+        const file = pathPart ? this.app.metadataCache.getFirstLinkpathDest(pathPart, sourcePath) : this.app.vault.getAbstractFileByPath(sourcePath);
+        return file && this.isGlossaryFile(file) ? { file, heading } : null;
+      },
+      // A "Basename#Heading" linktext for an existing wikilink, filtered to indexed headings.
+      linkToTerm(link, sourcePath, termSet) {
+        const r = this.resolveHeadingLink(link, sourcePath);
+        if (!r)
           return null;
-        const linktext = `${dest.basename}#${heading}`;
+        const linktext = `${r.file.basename}#${r.heading}`;
         return termSet.has(linktext) ? linktext : null;
       },
       // Read one note for the usage report: how often each heading is mentioned in it as plain
@@ -5192,27 +5200,23 @@ var require_aliases = __commonJS({
         const links = cache && cache.links || [];
         const byFile = /* @__PURE__ */ new Map();
         for (const link of links) {
-          const hash = String(link.link || "").indexOf("#");
-          if (hash < 0)
+          const r = this.resolveHeadingLink(link.link, file.path);
+          if (!r)
             continue;
-          const heading = String(link.link).slice(hash + 1).trim();
           const display = String(link.displayText || "").trim();
-          if (!heading || !display)
+          if (!display)
             continue;
-          const target = this.app.metadataCache.getFirstLinkpathDest(String(link.link).slice(0, hash), file.path);
-          if (!target || !this.isGlossaryFile(target))
+          if (display.includes(">") || this.knownFormsFor(r.file, r.heading).has(display.toLowerCase()))
             continue;
-          if (display.includes(">") || this.knownFormsFor(target, heading).has(display.toLowerCase()))
-            continue;
-          let perHeading = byFile.get(target.path);
+          let perHeading = byFile.get(r.file.path);
           if (!perHeading) {
-            perHeading = { file: target, headings: /* @__PURE__ */ new Map() };
-            byFile.set(target.path, perHeading);
+            perHeading = { file: r.file, headings: /* @__PURE__ */ new Map() };
+            byFile.set(r.file.path, perHeading);
           }
-          const list = perHeading.headings.get(heading) || [];
+          const list = perHeading.headings.get(r.heading) || [];
           if (!list.some((a) => a.toLowerCase() === display.toLowerCase()))
             list.push(display);
-          perHeading.headings.set(heading, list);
+          perHeading.headings.set(r.heading, list);
         }
         let total = 0;
         for (const entry of byFile.values())
@@ -5850,12 +5854,9 @@ var HeadingLinkerPlugin = class extends Plugin {
       if (this.settings.statusBarIncludeLinks) {
         const cache = this.app.metadataCache.getFileCache(file);
         for (const link of cache && cache.links || []) {
-          const hash = link.link.indexOf("#");
-          if (hash < 0)
-            continue;
-          const dest = this.app.metadataCache.getFirstLinkpathDest(link.link, file.path);
-          if (dest && this.isGlossaryFile(dest))
-            linktexts.add(`${dest.basename}#${link.link.slice(hash + 1)}`);
+          const r = this.resolveHeadingLink(link.link, file.path);
+          if (r)
+            linktexts.add(`${r.file.basename}#${r.heading}`);
         }
       }
       const n = linktexts.size;

@@ -78,19 +78,28 @@ module.exports = {
     return opts.wholeVault ? this.app.vault.getMarkdownFiles() : this.getScopeFiles();
   },
 
-  // A "Basename#Heading" linktext for an existing wikilink, or null when it targets no
-  // indexed heading. Only links with a #heading subpath count towards heading usage.
-  linkToTerm(link, sourcePath, termSet) {
-    const hash = String(link || '').indexOf('#');
+  // The heading-source file and raw heading text a wikilink's `#heading` subpath points at,
+  // or null when it targets no heading in a source file. getFirstLinkpathDest resolves file
+  // paths only, so the subpath must be sliced off first — the whole "File#Heading" would be
+  // looked up as a file literally named that and never resolve.
+  resolveHeadingLink(link, sourcePath) {
+    const raw = String(link || '');
+    const hash = raw.indexOf('#');
     if (hash < 0) return null;
-    const pathPart = link.slice(0, hash);
-    const heading = link.slice(hash + 1);
+    const heading = raw.slice(hash + 1).trim();
     if (!heading) return null;
-    const dest = pathPart
+    const pathPart = raw.slice(0, hash);
+    const file = pathPart
       ? this.app.metadataCache.getFirstLinkpathDest(pathPart, sourcePath)
       : this.app.vault.getAbstractFileByPath(sourcePath);
-    if (!dest || !this.isGlossaryFile(dest)) return null;
-    const linktext = `${dest.basename}#${heading}`;
+    return file && this.isGlossaryFile(file) ? { file, heading } : null;
+  },
+
+  // A "Basename#Heading" linktext for an existing wikilink, filtered to indexed headings.
+  linkToTerm(link, sourcePath, termSet) {
+    const r = this.resolveHeadingLink(link, sourcePath);
+    if (!r) return null;
+    const linktext = `${r.file.basename}#${r.heading}`;
     return termSet.has(linktext) ? linktext : null;
   },
 

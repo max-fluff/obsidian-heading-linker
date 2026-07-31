@@ -118,23 +118,19 @@ module.exports = {
     const byFile = new Map();
 
     for (const link of links) {
-      const hash = String(link.link || '').indexOf('#');
-      if (hash < 0) continue; // a link to a whole note says nothing about a heading
-      const heading = String(link.link).slice(hash + 1).trim();
+      const r = this.resolveHeadingLink(link.link, file.path); // null for a whole-note link
+      if (!r) continue;
       const display = String(link.displayText || '').trim();
-      if (!heading || !display) continue;
-
-      const target = this.app.metadataCache.getFirstLinkpathDest(String(link.link).slice(0, hash), file.path);
-      if (!target || !this.isGlossaryFile(target)) continue;
+      if (!display) continue;
       // Obsidian fills displayText with "Note > Heading" for a link with no alias of its
       // own; that is its rendering, not the author's wording, so there is nothing to learn.
-      if (display.includes('>') || this.knownFormsFor(target, heading).has(display.toLowerCase())) continue;
+      if (display.includes('>') || this.knownFormsFor(r.file, r.heading).has(display.toLowerCase())) continue;
 
-      let perHeading = byFile.get(target.path);
-      if (!perHeading) { perHeading = { file: target, headings: new Map() }; byFile.set(target.path, perHeading); }
-      const list = perHeading.headings.get(heading) || [];
+      let perHeading = byFile.get(r.file.path);
+      if (!perHeading) { perHeading = { file: r.file, headings: new Map() }; byFile.set(r.file.path, perHeading); }
+      const list = perHeading.headings.get(r.heading) || [];
       if (!list.some((a) => a.toLowerCase() === display.toLowerCase())) list.push(display);
-      perHeading.headings.set(heading, list);
+      perHeading.headings.set(r.heading, list);
     }
 
     let total = 0;

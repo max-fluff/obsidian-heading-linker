@@ -354,10 +354,8 @@ class HeadingLinkerPlugin extends Plugin {
       if (this.settings.statusBarIncludeLinks) {
         const cache = this.app.metadataCache.getFileCache(file);
         for (const link of (cache && cache.links) || []) {
-          const hash = link.link.indexOf('#');
-          if (hash < 0) continue;
-          const dest = this.app.metadataCache.getFirstLinkpathDest(link.link, file.path);
-          if (dest && this.isGlossaryFile(dest)) linktexts.add(`${dest.basename}#${link.link.slice(hash + 1)}`);
+          const r = this.resolveHeadingLink(link.link, file.path);
+          if (r) linktexts.add(`${r.file.basename}#${r.heading}`);
         }
       }
       const n = linktexts.size;
