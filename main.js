@@ -4461,7 +4461,79 @@ var require_usage = __commonJS({
         }
       };
     }
-    module2.exports = { createUsageCache };
+    function foldUsageInto(counts, results) {
+      for (const { file, value: here } of results) {
+        for (const [id, n] of here) {
+          const entry = counts.get(id);
+          if (!entry)
+            continue;
+          entry.count += n;
+          entry.files.push({ path: file.path, count: n });
+        }
+      }
+      return counts;
+    }
+    async function scanCandidateWords(plugin, file, minLen, isTermWord) {
+      const here = /* @__PURE__ */ new Map();
+      let text;
+      try {
+        text = await plugin.app.vault.cachedRead(file);
+      } catch (e) {
+        return here;
+      }
+      const protect = plugin.computeProtected(text);
+      for (const m of text.matchAll(/[\p{L}\p{Nd}]+/gu)) {
+        const raw = m[0];
+        if (/^\p{Nd}+$/u.test(raw))
+          continue;
+        if (plugin.overlapsProtected(protect, m.index, m.index + raw.length))
+          continue;
+        if (isTermWord(plugin.keysFor(raw)))
+          continue;
+        const lemma = plugin.lemmaFor(raw);
+        if (lemma.length < minLen)
+          continue;
+        let g = here.get(lemma);
+        if (!g) {
+          g = { forms: /* @__PURE__ */ new Map(), total: 0 };
+          here.set(lemma, g);
+        }
+        g.forms.set(raw, (g.forms.get(raw) || 0) + 1);
+        g.total++;
+      }
+      return here;
+    }
+    function aggregateCandidates(results, minNotes) {
+      const groups = /* @__PURE__ */ new Map();
+      for (const { value: here } of results) {
+        for (const [lemma, g] of here) {
+          let all = groups.get(lemma);
+          if (!all) {
+            all = { forms: /* @__PURE__ */ new Map(), total: 0, docFreq: 0 };
+            groups.set(lemma, all);
+          }
+          for (const [form, n] of g.forms)
+            all.forms.set(form, (all.forms.get(form) || 0) + n);
+          all.total += g.total;
+          all.docFreq++;
+        }
+      }
+      const out = [];
+      for (const [lemma, g] of groups) {
+        if (g.docFreq < minNotes)
+          continue;
+        let display = lemma, best = -1;
+        for (const [form, n] of g.forms)
+          if (n > best) {
+            best = n;
+            display = form;
+          }
+        out.push({ lemma, display, count: g.total, docFreq: g.docFreq });
+      }
+      out.sort((a, b) => b.docFreq - a.docFreq || b.count - a.count);
+      return out.slice(0, 100);
+    }
+    module2.exports = { createUsageCache, foldUsageInto, scanCandidateWords, aggregateCandidates };
   }
 });
 
@@ -4657,7 +4729,7 @@ var require_api = __commonJS({
   "src/api.js"(exports2, module2) {
     "use strict";
     var { createProseProvider, aliasHit } = require_provider();
-    var { createUsageCache } = require_usage();
+    var { createUsageCache, foldUsageInto, scanCandidateWords, aggregateCandidates } = require_usage();
     var { t: t2 } = require_i18n();
     var { suggestionsFor } = require_heading_suggest();
     module2.exports = {
@@ -4775,48 +4847,8 @@ var require_api = __commonJS({
           this.usageCache = createUsageCache();
         const signature = `${this.indexVersion || 0}|${opts.includeLinks ? "L" : ""}`;
         const results = await this.usageCache.run(files, signature, (file) => this.usageInFile(file, !!opts.includeLinks, termSet));
-        for (const { file, value: here } of results) {
-          for (const [linktext, n] of here) {
-            const entry = counts.get(linktext);
-            if (!entry)
-              continue;
-            entry.count += n;
-            entry.files.push({ path: file.path, count: n });
-          }
-        }
+        foldUsageInto(counts, results);
         return [...counts.values()];
-      },
-      // Read one note for the candidate scan: how often each not-yet-a-heading lemma appears in
-      // it, with the surface forms behind it. Cached per note.
-      async candidatesInFile(file, minLen) {
-        const here = /* @__PURE__ */ new Map();
-        let text;
-        try {
-          text = await this.app.vault.cachedRead(file);
-        } catch (e) {
-          return here;
-        }
-        const protect = this.computeProtected(text);
-        for (const m of text.matchAll(/[\p{L}\p{Nd}]+/gu)) {
-          const raw = m[0];
-          if (/^\p{Nd}+$/u.test(raw))
-            continue;
-          if (this.overlapsProtected(protect, m.index, m.index + raw.length))
-            continue;
-          if (this.keysFor(raw).some((k) => this.index.byKey.has(k)))
-            continue;
-          const lemma = this.lemmaFor(raw);
-          if (lemma.length < minLen)
-            continue;
-          let g = here.get(lemma);
-          if (!g) {
-            g = { forms: /* @__PURE__ */ new Map(), total: 0 };
-            here.set(lemma, g);
-          }
-          g.forms.set(raw, (g.forms.get(raw) || 0) + 1);
-          g.total++;
-        }
-        return here;
       },
       async collectCandidates(opts = {}) {
         const minLen = Math.max(1, this.settings.minTermLength || 1);
@@ -4825,35 +4857,9 @@ var require_api = __commonJS({
         if (!this.candidateCache)
           this.candidateCache = createUsageCache();
         const signature = `${this.indexVersion || 0}|${minLen}`;
-        const results = await this.candidateCache.run(files, signature, (file) => this.candidatesInFile(file, minLen));
-        const groups = /* @__PURE__ */ new Map();
-        for (const { value: here } of results) {
-          for (const [lemma, g] of here) {
-            let all = groups.get(lemma);
-            if (!all) {
-              all = { forms: /* @__PURE__ */ new Map(), total: 0, docFreq: 0 };
-              groups.set(lemma, all);
-            }
-            for (const [form, n] of g.forms)
-              all.forms.set(form, (all.forms.get(form) || 0) + n);
-            all.total += g.total;
-            all.docFreq++;
-          }
-        }
-        const out = [];
-        for (const [lemma, g] of groups) {
-          if (g.docFreq < minNotes)
-            continue;
-          let display = lemma, best = -1;
-          for (const [form, n] of g.forms)
-            if (n > best) {
-              best = n;
-              display = form;
-            }
-          out.push({ lemma, display, count: g.total, docFreq: g.docFreq });
-        }
-        out.sort((a, b) => b.docFreq - a.docFreq || b.count - a.count);
-        return out.slice(0, 100);
+        const isTermWord = (keys) => keys.some((k) => this.index.byKey.has(k));
+        const results = await this.candidateCache.run(files, signature, (file) => scanCandidateWords(this, file, minLen, isTermWord));
+        return aggregateCandidates(results, minNotes);
       }
     };
   }

@@ -5,7 +5,7 @@
 // the provider contract the sibling linkers read (consumed in shared/discover.js).
 
 const { createProseProvider, aliasHit } = require('./shared/prose/provider');
-const { createUsageCache } = require('./shared/prose/usage');
+const { createUsageCache, foldUsageInto, scanCandidateWords, aggregateCandidates } = require('./shared/prose/usage');
 const { t } = require('./shared/i18n');
 const { suggestionsFor } = require('./heading-suggest');
 
@@ -131,37 +131,8 @@ module.exports = {
     if (!this.usageCache) this.usageCache = createUsageCache();
     const signature = `${this.indexVersion || 0}|${opts.includeLinks ? 'L' : ''}`;
     const results = await this.usageCache.run(files, signature, (file) => this.usageInFile(file, !!opts.includeLinks, termSet));
-    for (const { file, value: here } of results) {
-      for (const [linktext, n] of here) {
-        const entry = counts.get(linktext);
-        if (!entry) continue;
-        entry.count += n;
-        entry.files.push({ path: file.path, count: n });
-      }
-    }
+    foldUsageInto(counts, results);
     return [...counts.values()];
-  },
-
-  // Read one note for the candidate scan: how often each not-yet-a-heading lemma appears in
-  // it, with the surface forms behind it. Cached per note.
-  async candidatesInFile(file, minLen) {
-    const here = new Map(); // lemma -> { forms: Map<surface, count>, total }
-    let text;
-    try { text = await this.app.vault.cachedRead(file); } catch (e) { return here; }
-    const protect = this.computeProtected(text);
-    for (const m of text.matchAll(/[\p{L}\p{Nd}]+/gu)) {
-      const raw = m[0];
-      if (/^\p{Nd}+$/u.test(raw)) continue;
-      if (this.overlapsProtected(protect, m.index, m.index + raw.length)) continue;
-      if (this.keysFor(raw).some((k) => this.index.byKey.has(k))) continue;
-      const lemma = this.lemmaFor(raw);
-      if (lemma.length < minLen) continue;
-      let g = here.get(lemma);
-      if (!g) { g = { forms: new Map(), total: 0 }; here.set(lemma, g); }
-      g.forms.set(raw, (g.forms.get(raw) || 0) + 1);
-      g.total++;
-    }
-    return here;
   },
 
   async collectCandidates(opts = {}) {
@@ -171,27 +142,8 @@ module.exports = {
     if (!this.candidateCache) this.candidateCache = createUsageCache();
     // minLen changes what a note contributes, so it joins the index version in the key.
     const signature = `${this.indexVersion || 0}|${minLen}`;
-    const results = await this.candidateCache.run(files, signature, (file) => this.candidatesInFile(file, minLen));
-
-    const groups = new Map(); // lemma -> { forms: Map<surface, count>, total, docFreq }
-    for (const { value: here } of results) {
-      for (const [lemma, g] of here) {
-        let all = groups.get(lemma);
-        if (!all) { all = { forms: new Map(), total: 0, docFreq: 0 }; groups.set(lemma, all); }
-        for (const [form, n] of g.forms) all.forms.set(form, (all.forms.get(form) || 0) + n);
-        all.total += g.total;
-        all.docFreq++;
-      }
-    }
-
-    const out = [];
-    for (const [lemma, g] of groups) {
-      if (g.docFreq < minNotes) continue;
-      let display = lemma, best = -1;
-      for (const [form, n] of g.forms) if (n > best) { best = n; display = form; }
-      out.push({ lemma, display, count: g.total, docFreq: g.docFreq });
-    }
-    out.sort((a, b) => b.docFreq - a.docFreq || b.count - a.count);
-    return out.slice(0, 100);
+    const isTermWord = (keys) => keys.some((k) => this.index.byKey.has(k));
+    const results = await this.candidateCache.run(files, signature, (file) => scanCandidateWords(this, file, minLen, isTermWord));
+    return aggregateCandidates(results, minNotes);
   },
 };
