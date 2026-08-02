@@ -155,7 +155,7 @@ const methods = {
     ];
     const esc = (s) => String(s).replace(/\|/g, '\\|');
     for (const r of rows) lines.push(`| [[${esc(r.note.replace(/\.md$/i, ''))}]] | \`${esc(r.base)}#${esc(r.heading)}\` |`);
-    const file = await writeReportNote(this.app, t('report.broken.file'), lines.join('\n') + '\n');
+    const file = await writeReportNote(this.app.vault, t('report.broken.file'), lines.join('\n') + '\n');
     if (!file) { new Notice(t('notice.reportFailed')); return; }
     new Notice(t('notice.headingLinksBroken', { n: rows.length, file: file.path }));
     const leaf = this.app.workspace.getLeaf && this.app.workspace.getLeaf(true);

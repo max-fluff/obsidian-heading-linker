@@ -5353,11 +5353,11 @@ var require_report_note = __commonJS({
     "use strict";
     var { normalizePath } = require("obsidian");
     var MAX_TRIES = 50;
-    async function writeReportNote(app, base, body) {
+    async function writeReportNote(vault, base, body) {
       for (let n = 0; n < MAX_TRIES; n++) {
         const name = n ? `${base} ${n + 1}.md` : `${base}.md`;
         try {
-          return await app.vault.create(normalizePath(name), body);
+          return await vault.create(normalizePath(name), body);
         } catch (e) {
         }
       }
@@ -5696,7 +5696,7 @@ var require_rename = __commonJS({
         const esc = (s) => String(s).replace(/\|/g, "\\|");
         for (const r of rows)
           lines.push(`| [[${esc(r.note.replace(/\.md$/i, ""))}]] | \`${esc(r.base)}#${esc(r.heading)}\` |`);
-        const file = await writeReportNote(this.app, t2("report.broken.file"), lines.join("\n") + "\n");
+        const file = await writeReportNote(this.app.vault, t2("report.broken.file"), lines.join("\n") + "\n");
         if (!file) {
           new Notice2(t2("notice.reportFailed"));
           return;
