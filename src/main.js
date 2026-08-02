@@ -15,6 +15,7 @@ const { HeadingSuggest, suggestAvailable } = require('./heading-suggest');
 const { initI18n, withFamily, t, plural } = require('./shared/i18n');
 const { buildMenu } = require('./shared/menu-verbs');
 const aliases = require('./aliases');
+const rename = require('./rename');
 const { ChoicePopover } = require('./shared/prose/choices');
 
 // Per-heading aliases from `%% alias: a, b %%` comments inside a heading's section.
@@ -80,7 +81,14 @@ class HeadingLinkerPlugin extends Plugin {
 
     await this.loadLanguages();
     this.rebuildIndex();
-    this.scheduleRebuild = debounce(() => { this.rebuildIndex(); this.rerenderViews(); this.updateStatusBar(); }, 600, true);
+    // The rename is offered after the rebuild, not before: the preview reads the index, and an
+    // index still describing the old heading would find nothing to fix.
+    this.scheduleRebuild = debounce(() => {
+      this.rebuildIndex();
+      this.rerenderViews();
+      this.updateStatusBar();
+      this.flushHeadingRenames();
+    }, 600, true);
 
     this.statusBarEl = this.addStatusBarItem();
     this.statusBarEl.addClass('mod-clickable');
@@ -95,7 +103,9 @@ class HeadingLinkerPlugin extends Plugin {
       if (!this.isGlossaryFile(file)) return;
       await this.loadFileAliases(file);
       const next = this.fileFingerprint(file);
-      if (this.headingFingerprints.get(file.path) === next) return;
+      const previous = this.headingFingerprints.get(file.path);
+      if (previous === next) return;
+      this.noteHeadingRename(file, previous);
       this.headingFingerprints.set(file.path, next);
       this.scheduleRebuild();
     }));
@@ -266,6 +276,7 @@ class HeadingLinkerPlugin extends Plugin {
       callback: () => { const f = this.app.workspace.getActiveFile(); if (f) this.collectAliasesFromNote(f); },
     });
     this.addCommand({ id: 'rebuild-index', name: t('cmd.rebuildIndex'), callback: () => { this.rebuildIndex(); new Notice(t('notice.indexRebuilt')); this.warnDuplicateHeadings(); } });
+    this.addCommand({ id: 'report-broken-links', name: t('cmd.reportBrokenLinks'), callback: () => this.reportBrokenHeadingLinks() });
 
     // Path-list toggles for the active note (the command-palette twin of the explorer menu).
     // Each is available only when it would change something, so add/remove never both show.
@@ -644,6 +655,6 @@ class HeadingLinkerPlugin extends Plugin {
   }
 }
 
-Object.assign(HeadingLinkerPlugin.prototype, matcher, highlight, materialize, aliases, api, indexEvents);
+Object.assign(HeadingLinkerPlugin.prototype, matcher, highlight, materialize, aliases, rename.methods, api, indexEvents);
 
 module.exports = HeadingLinkerPlugin;

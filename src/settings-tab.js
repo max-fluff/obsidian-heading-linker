@@ -4,13 +4,19 @@ const { PluginSettingTab, Setting, Notice } = require('obsidian');
 const { VaultPathSuggest, suggestAvailable } = require('./shared/prose/vault-suggest');
 const { sanitizeFolder } = require('./constants');
 const { t, plural } = require('./shared/i18n');
+const { redraw } = require('./shared/settings-redraw');
 const { renderPrecedenceSetting } = require('./shared/precedence');
 const { createProseSettings } = require('./shared/prose/settings');
 
 class HeadingLinkerSettingTab extends PluginSettingTab {
   constructor(app, plugin) { super(app, plugin); this.plugin = plugin; }
 
+  // Every fold and toggle redraws the whole pane; the reader keeps their place (shared/settings-redraw).
   display() {
+    redraw(this, () => this.draw());
+  }
+
+  draw() {
     const { containerEl } = this;
     containerEl.empty();
     const s = this.plugin.settings;
@@ -70,6 +76,16 @@ class HeadingLinkerSettingTab extends PluginSettingTab {
       .setName(t('set.headingAliases.name'))
       .setDesc(t('set.headingAliases.desc'))
       .addToggle((c) => c.setValue(s.headingAliases).onChange(async (v) => { s.headingAliases = v; await saveSources(true); }));
+
+    new Setting(containerEl)
+      .setName(t('set.followRenames.name'))
+      .setDesc(t('set.followRenames.desc'))
+      .addDropdown((c) => c
+        .addOption('off', t('set.followRenames.off'))
+        .addOption('ask', t('set.followRenames.ask'))
+        .addOption('preview', t('set.followRenames.preview'))
+        .setValue(s.followHeadingRenames)
+        .onChange(async (v) => { s.followHeadingRenames = v; await save(false); }));
 
     new Setting(containerEl).setName(t('set.heading.scope')).setHeading();
 

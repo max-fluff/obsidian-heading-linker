@@ -317,4 +317,12 @@ settings:
   cursor: pointer;
 }
 
+/* The action offered inside the "heading renamed" notice. */
+.heading-notice-action {
+  display: inline-block;
+  margin-top: 6px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 /* Heading Linker 1.2.2 */

@@ -17,6 +17,8 @@ var require_constants = __commonJS({
       excludeSources: "",
       // file OR folder paths never used as heading sources (even in vault mode)
       headingAliases: true,
+      // 'off' | 'ask' | 'preview': what to do when a source file's heading is renamed.
+      followHeadingRenames: "ask",
       // read `%% alias: … %%` comments in glossary files as extra matching forms
       scopeMode: "vault",
       // 'folders' | 'vault' — which notes get highlighted/linked
@@ -1642,6 +1644,11 @@ var require_common = __commonJS({
       "modal.andMore": "\u2026and {n} more",
       "btn.apply": "Apply",
       "btn.cancel": "Cancel",
+      "btn.close": "Close",
+      "label.thisNote": "This note",
+      "modal.update.summary": "{links} change(s) across {files} note(s). Uncheck any change to skip it, or a note to skip all of its changes.",
+      "modal.update.upToDate": "Everything is up to date \u2014 nothing to update.",
+      "notice.updateSkipped": "({n} note(s) skipped \u2014 changed since the preview)",
       "set.heading.maintenance": "Maintenance",
       "set.rebuild.button": "Rebuild",
       "set.precedence.name": "Priority among linker plugins",
@@ -1654,6 +1661,11 @@ var require_common = __commonJS({
       "modal.andMore": "\u2026\u0438 \u0435\u0449\u0451 {n}",
       "btn.apply": "\u041F\u0440\u0438\u043C\u0435\u043D\u0438\u0442\u044C",
       "btn.cancel": "\u041E\u0442\u043C\u0435\u043D\u0430",
+      "btn.close": "\u0417\u0430\u043A\u0440\u044B\u0442\u044C",
+      "label.thisNote": "\u042D\u0442\u0430 \u0437\u0430\u043C\u0435\u0442\u043A\u0430",
+      "modal.update.summary": "\u041F\u0440\u0430\u0432\u043E\u043A \u2014 {links} \u0432 \u0437\u0430\u043C\u0435\u0442\u043A\u0430\u0445: {files}. \u0421\u043D\u0438\u043C\u0438\u0442\u0435 \u0433\u0430\u043B\u043E\u0447\u043A\u0443 \u0441 \u043F\u0440\u0430\u0432\u043A\u0438, \u0447\u0442\u043E\u0431\u044B \u043F\u0440\u043E\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u0435\u0451, \u0438\u043B\u0438 \u0441 \u0437\u0430\u043C\u0435\u0442\u043A\u0438 \u2014 \u0447\u0442\u043E\u0431\u044B \u043F\u0440\u043E\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u0432\u0441\u0435 \u0435\u0451 \u043F\u0440\u0430\u0432\u043A\u0438.",
+      "modal.update.upToDate": "\u0412\u0441\u0451 \u0430\u043A\u0442\u0443\u0430\u043B\u044C\u043D\u043E \u2014 \u043E\u0431\u043D\u043E\u0432\u043B\u044F\u0442\u044C \u043D\u0435\u0447\u0435\u0433\u043E.",
+      "notice.updateSkipped": "(\u043F\u0440\u043E\u043F\u0443\u0449\u0435\u043D\u043E \u0437\u0430\u043C\u0435\u0442\u043E\u043A \u2014 {n}: \u0438\u0437\u043C\u0435\u043D\u0438\u043B\u0438\u0441\u044C \u043F\u043E\u0441\u043B\u0435 \u043F\u0440\u0435\u0434\u043F\u0440\u043E\u0441\u043C\u043E\u0442\u0440\u0430)",
       "set.heading.maintenance": "\u041E\u0431\u0441\u043B\u0443\u0436\u0438\u0432\u0430\u043D\u0438\u0435",
       "set.rebuild.button": "\u041F\u0435\u0440\u0435\u0441\u0442\u0440\u043E\u0438\u0442\u044C",
       "set.precedence.name": "\u041F\u0440\u0438\u043E\u0440\u0438\u0442\u0435\u0442 \u0441\u0440\u0435\u0434\u0438 \u043F\u043B\u0430\u0433\u0438\u043D\u043E\u0432-\u043B\u0438\u043D\u043A\u0435\u0440\u043E\u0432",
@@ -2070,16 +2082,11 @@ var require_sigil = __commonJS({
       "menu.convert": "Find and convert to link",
       "menu.convert.group": "Find and convert to link",
       "menu.open.group": "Find and open",
-      "notice.updateSkipped": "({n} note(s) skipped \u2014 changed since the preview)",
       "embed.menu.refresh": "Refresh embed",
       "embed.tool.more": "More actions",
       "embed.tool.open": "Open",
       "embed.tool.refresh": "Refresh",
       "modal.embedPlaceholder": "Choose an embed format\u2026",
-      "modal.update.summary": "{links} change(s) across {files} note(s). Uncheck any change to skip it, or a note to skip all of its changes.",
-      "modal.update.upToDate": "Everything is up to date \u2014 nothing to update.",
-      "btn.close": "Close",
-      "label.thisNote": "This note",
       "set.heading.suggestions": "Suggestions & links",
       "set.heading.hover": "Hover preview",
       "set.heading.links": "Links",
@@ -2106,22 +2113,21 @@ var require_sigil = __commonJS({
       "set.contextMenu.name": "Editor context menu",
       "set.markStaleLinks.name": "Mark stale links",
       "set.info.unknownRoot": "(unknown)",
-      "plural.entry": { one: "{n} entry", other: "{n} entries" }
+      "plural.entry": { one: "{n} entry", other: "{n} entries" },
+      "plural.key": { one: "{n} key", other: "{n} keys" },
+      "plural.note": { one: "{n} note", other: "{n} notes" },
+      "plural.staleLink": { one: "{n} stale link", other: "{n} stale links" },
+      "plural.brokenLink": { one: "{n} broken link", other: "{n} broken links" }
     };
     var ru = {
       "menu.convert": "\u041D\u0430\u0439\u0442\u0438 \u0438 \u043F\u0440\u0435\u0432\u0440\u0430\u0442\u0438\u0442\u044C \u0432 \u0441\u0441\u044B\u043B\u043A\u0443",
       "menu.convert.group": "\u041D\u0430\u0439\u0442\u0438 \u0438 \u043F\u0440\u0435\u0432\u0440\u0430\u0442\u0438\u0442\u044C \u0432 \u0441\u0441\u044B\u043B\u043A\u0443",
       "menu.open.group": "\u041D\u0430\u0439\u0442\u0438 \u0438 \u043E\u0442\u043A\u0440\u044B\u0442\u044C",
-      "notice.updateSkipped": "(\u043F\u0440\u043E\u043F\u0443\u0449\u0435\u043D\u043E \u0437\u0430\u043C\u0435\u0442\u043E\u043A \u2014 {n}: \u0438\u0437\u043C\u0435\u043D\u0438\u043B\u0438\u0441\u044C \u043F\u043E\u0441\u043B\u0435 \u043F\u0440\u0435\u0434\u043F\u0440\u043E\u0441\u043C\u043E\u0442\u0440\u0430)",
       "embed.menu.refresh": "\u041E\u0431\u043D\u043E\u0432\u0438\u0442\u044C embed",
       "embed.tool.more": "\u0415\u0449\u0451 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F",
       "embed.tool.open": "\u041E\u0442\u043A\u0440\u044B\u0442\u044C",
       "embed.tool.refresh": "\u041E\u0431\u043D\u043E\u0432\u0438\u0442\u044C",
       "modal.embedPlaceholder": "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0444\u043E\u0440\u043C\u0430\u0442 embed\u2026",
-      "modal.update.summary": "\u041F\u0440\u0430\u0432\u043E\u043A \u2014 {links} \u0432 \u0437\u0430\u043C\u0435\u0442\u043A\u0430\u0445: {files}. \u0421\u043D\u0438\u043C\u0438\u0442\u0435 \u0433\u0430\u043B\u043E\u0447\u043A\u0443 \u0441 \u043F\u0440\u0430\u0432\u043A\u0438, \u0447\u0442\u043E\u0431\u044B \u043F\u0440\u043E\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u0435\u0451, \u0438\u043B\u0438 \u0441 \u0437\u0430\u043C\u0435\u0442\u043A\u0438 \u2014 \u0447\u0442\u043E\u0431\u044B \u043F\u0440\u043E\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u0432\u0441\u0435 \u0435\u0451 \u043F\u0440\u0430\u0432\u043A\u0438.",
-      "modal.update.upToDate": "\u0412\u0441\u0451 \u0430\u043A\u0442\u0443\u0430\u043B\u044C\u043D\u043E \u2014 \u043E\u0431\u043D\u043E\u0432\u043B\u044F\u0442\u044C \u043D\u0435\u0447\u0435\u0433\u043E.",
-      "btn.close": "\u0417\u0430\u043A\u0440\u044B\u0442\u044C",
-      "label.thisNote": "\u042D\u0442\u0430 \u0437\u0430\u043C\u0435\u0442\u043A\u0430",
       "set.heading.suggestions": "\u041F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0438 \u0438 \u0441\u0441\u044B\u043B\u043A\u0438",
       "set.heading.hover": "\u041F\u0440\u0435\u0432\u044C\u044E \u043F\u0440\u0438 \u043D\u0430\u0432\u0435\u0434\u0435\u043D\u0438\u0438",
       "set.heading.links": "\u0421\u0441\u044B\u043B\u043A\u0438",
@@ -2148,7 +2154,11 @@ var require_sigil = __commonJS({
       "set.contextMenu.name": "\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442\u043D\u043E\u0435 \u043C\u0435\u043D\u044E \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440\u0430",
       "set.markStaleLinks.name": "\u041E\u0442\u043C\u0435\u0447\u0430\u0442\u044C \u0443\u0441\u0442\u0430\u0440\u0435\u0432\u0448\u0438\u0435 \u0441\u0441\u044B\u043B\u043A\u0438",
       "set.info.unknownRoot": "(\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E)",
-      "plural.entry": { one: "{n} \u0437\u0430\u043F\u0438\u0441\u044C", few: "{n} \u0437\u0430\u043F\u0438\u0441\u0438", many: "{n} \u0437\u0430\u043F\u0438\u0441\u0435\u0439", other: "{n} \u0437\u0430\u043F\u0438\u0441\u0435\u0439" }
+      "plural.entry": { one: "{n} \u0437\u0430\u043F\u0438\u0441\u044C", few: "{n} \u0437\u0430\u043F\u0438\u0441\u0438", many: "{n} \u0437\u0430\u043F\u0438\u0441\u0435\u0439", other: "{n} \u0437\u0430\u043F\u0438\u0441\u0435\u0439" },
+      "plural.key": { one: "{n} \u043A\u043B\u044E\u0447", few: "{n} \u043A\u043B\u044E\u0447\u0430", many: "{n} \u043A\u043B\u044E\u0447\u0435\u0439", other: "{n} \u043A\u043B\u044E\u0447\u0435\u0439" },
+      "plural.note": { one: "{n} \u0437\u0430\u043C\u0435\u0442\u043A\u0435", few: "{n} \u0437\u0430\u043C\u0435\u0442\u043A\u0430\u0445", many: "{n} \u0437\u0430\u043C\u0435\u0442\u043A\u0430\u0445", other: "{n} \u0437\u0430\u043C\u0435\u0442\u043A\u0430\u0445" },
+      "plural.staleLink": { one: "{n} \u0443\u0441\u0442\u0430\u0440\u0435\u0432\u0448\u0430\u044F \u0441\u0441\u044B\u043B\u043A\u0430", few: "{n} \u0443\u0441\u0442\u0430\u0440\u0435\u0432\u0448\u0438\u0435 \u0441\u0441\u044B\u043B\u043A\u0438", many: "{n} \u0443\u0441\u0442\u0430\u0440\u0435\u0432\u0448\u0438\u0445 \u0441\u0441\u044B\u043B\u043E\u043A", other: "{n} \u0443\u0441\u0442\u0430\u0440\u0435\u0432\u0448\u0438\u0445 \u0441\u0441\u044B\u043B\u043E\u043A" },
+      "plural.brokenLink": { one: "{n} \u0431\u0438\u0442\u0430\u044F \u0441\u0441\u044B\u043B\u043A\u0430", few: "{n} \u0431\u0438\u0442\u044B\u0435 \u0441\u0441\u044B\u043B\u043A\u0438", many: "{n} \u0431\u0438\u0442\u044B\u0445 \u0441\u0441\u044B\u043B\u043E\u043A", other: "{n} \u0431\u0438\u0442\u044B\u0445 \u0441\u0441\u044B\u043B\u043E\u043A" }
     };
     module2.exports = { en, ru };
   }
@@ -2213,6 +2223,21 @@ var require_i18n = __commonJS({
       return out;
     }
     module2.exports = { initI18n: initI18n2, t: t2, plural: plural2, withFamily: withFamily2 };
+  }
+});
+
+// src/shared/settings-redraw.js
+var require_settings_redraw = __commonJS({
+  "src/shared/settings-redraw.js"(exports2, module2) {
+    "use strict";
+    function redraw(tab, draw) {
+      const el = tab && tab.containerEl;
+      const top = el ? el.scrollTop || 0 : 0;
+      draw();
+      if (el && top)
+        el.scrollTop = top;
+    }
+    module2.exports = { redraw };
   }
 });
 
@@ -2782,6 +2807,7 @@ var require_settings_tab = __commonJS({
     var { VaultPathSuggest, suggestAvailable: suggestAvailable2 } = require_vault_suggest();
     var { sanitizeFolder: sanitizeFolder2 } = require_constants();
     var { t: t2, plural: plural2 } = require_i18n();
+    var { redraw } = require_settings_redraw();
     var { renderPrecedenceSetting } = require_precedence();
     var { createProseSettings } = require_settings();
     var HeadingLinkerSettingTab2 = class extends PluginSettingTab {
@@ -2789,7 +2815,11 @@ var require_settings_tab = __commonJS({
         super(app, plugin);
         this.plugin = plugin;
       }
+      // Every fold and toggle redraws the whole pane; the reader keeps their place (shared/settings-redraw).
       display() {
+        redraw(this, () => this.draw());
+      }
+      draw() {
         const { containerEl } = this;
         containerEl.empty();
         const s = this.plugin.settings;
@@ -2853,6 +2883,10 @@ var require_settings_tab = __commonJS({
         new Setting(containerEl).setName(t2("set.headingAliases.name")).setDesc(t2("set.headingAliases.desc")).addToggle((c) => c.setValue(s.headingAliases).onChange(async (v) => {
           s.headingAliases = v;
           await saveSources(true);
+        }));
+        new Setting(containerEl).setName(t2("set.followRenames.name")).setDesc(t2("set.followRenames.desc")).addDropdown((c) => c.addOption("off", t2("set.followRenames.off")).addOption("ask", t2("set.followRenames.ask")).addOption("preview", t2("set.followRenames.preview")).setValue(s.followHeadingRenames).onChange(async (v) => {
+          s.followHeadingRenames = v;
+          await save(false);
         }));
         new Setting(containerEl).setName(t2("set.heading.scope")).setHeading();
         sections.scopeMode(containerEl, saveScope);
@@ -5252,6 +5286,432 @@ var require_aliases = __commonJS({
   }
 });
 
+// src/shared/wikilink.js
+var require_wikilink = __commonJS({
+  "src/shared/wikilink.js"(exports2, module2) {
+    "use strict";
+    var { isProtected } = require_markdown();
+    var wikiRegex = () => /\[\[([^\]]+)\]\]/g;
+    function parseWiki(inner) {
+      const s = String(inner == null ? "" : inner);
+      const pipe = s.indexOf("|");
+      const rawTarget = (pipe >= 0 ? s.slice(0, pipe) : s).replace(/\\$/, "").trim();
+      const display = (pipe >= 0 ? s.slice(pipe + 1) : "").trim();
+      const block = rawTarget.indexOf("^");
+      const withoutBlock = block >= 0 ? rawTarget.slice(0, block) : rawTarget;
+      const hash = withoutBlock.indexOf("#");
+      return {
+        file: (hash >= 0 ? withoutBlock.slice(0, hash) : withoutBlock).trim(),
+        heading: hash >= 0 ? withoutBlock.slice(hash + 1).trim() : "",
+        block: block >= 0 ? rawTarget.slice(block + 1).trim() : "",
+        display,
+        hasSubpath: hash >= 0 || block >= 0
+      };
+    }
+    function formatWiki(parts, inTable) {
+      const target = parts.file + (parts.heading ? "#" + parts.heading : "") + (parts.block ? "^" + parts.block : "");
+      if (!parts.display)
+        return "[[" + target + "]]";
+      return "[[" + target + (inTable ? "\\|" : "|") + parts.display + "]]";
+    }
+    function findWikiLinks(text) {
+      const s = String(text == null ? "" : text);
+      const out = [];
+      const re = wikiRegex();
+      let m;
+      while (m = re.exec(s)) {
+        if (isProtected(s, m.index))
+          continue;
+        out.push({ start: m.index, end: m.index + m[0].length, source: m[0], parts: parseWiki(m[1]) });
+      }
+      return out;
+    }
+    function rewriteWikiLinks(text, fn, inTableAt) {
+      const s = String(text == null ? "" : text);
+      const links = findWikiLinks(s);
+      let out = s;
+      let count = 0;
+      for (let i = links.length - 1; i >= 0; i--) {
+        const next = fn(links[i].parts, links[i]);
+        if (!next)
+          continue;
+        const replaced = formatWiki(next, inTableAt ? inTableAt(s, links[i].start) : false);
+        if (replaced === links[i].source)
+          continue;
+        out = out.slice(0, links[i].start) + replaced + out.slice(links[i].end);
+        count += 1;
+      }
+      return { text: out, count };
+    }
+    module2.exports = { wikiRegex, parseWiki, formatWiki, findWikiLinks, rewriteWikiLinks };
+  }
+});
+
+// src/shared/report-note.js
+var require_report_note = __commonJS({
+  "src/shared/report-note.js"(exports2, module2) {
+    "use strict";
+    var { normalizePath } = require("obsidian");
+    var MAX_TRIES = 50;
+    async function writeReportNote(app, base, body) {
+      for (let n = 0; n < MAX_TRIES; n++) {
+        const name = n ? `${base} ${n + 1}.md` : `${base}.md`;
+        try {
+          return await app.vault.create(normalizePath(name), body);
+        } catch (e) {
+        }
+      }
+      return null;
+    }
+    module2.exports = { writeReportNote };
+  }
+});
+
+// src/shared/update-preview.js
+var require_update_preview = __commonJS({
+  "src/shared/update-preview.js"(exports2, module2) {
+    "use strict";
+    var { Notice: Notice2, Modal, MarkdownView } = require("obsidian");
+    var { t: t2 } = require_i18n();
+    var MAX_ROWS = 50;
+    var UpdatePreviewModal = class extends Modal {
+      constructor(app, entries, onApply, prefix) {
+        super(app);
+        this.entries = entries;
+        this.onApply = onApply;
+        this.prefix = prefix;
+        for (const e of entries)
+          for (const c of e.changes)
+            c.selected = true;
+      }
+      cls(suffix) {
+        return suffix ? this.prefix + "-" + suffix : this.prefix;
+      }
+      onOpen() {
+        const { contentEl } = this;
+        contentEl.addClass(this.cls());
+        contentEl.createEl("h3", { text: t2("modal.update.title") });
+        const changed = this.entries.filter((e) => e.changes.length);
+        const total = changed.reduce((n, e) => n + e.changes.length, 0);
+        const brokenTotal = this.entries.reduce((n, e) => n + e.broken.length, 0);
+        if (!total && !brokenTotal) {
+          contentEl.createEl("p", { cls: this.cls("empty"), text: t2("modal.update.upToDate") });
+        } else {
+          if (total)
+            contentEl.createEl("p", { text: t2("modal.update.summary", { links: total, files: changed.length }) });
+          if (brokenTotal)
+            contentEl.createEl("p", { cls: this.cls("attention"), text: t2("modal.update.attention", { n: brokenTotal }) });
+          this.entries.forEach((e) => this.renderEntry(contentEl, e));
+        }
+        const bar = contentEl.createDiv({ cls: this.cls("buttons") });
+        if (total) {
+          bar.createEl("button", { text: t2("btn.apply"), cls: "mod-cta" }).onclick = async () => {
+            this.close();
+            await this.onApply(this.entries);
+          };
+          bar.createEl("button", { text: t2("btn.cancel") }).onclick = () => this.close();
+        } else {
+          bar.createEl("button", { text: t2("btn.close"), cls: "mod-cta" }).onclick = () => this.close();
+        }
+      }
+      renderEntry(contentEl, e) {
+        if (!e.changes.length && !e.broken.length)
+          return;
+        const head = contentEl.createDiv({ cls: this.cls("file") });
+        if (e.changes.length) {
+          const rowBoxes = [];
+          const label = head.createEl("label", { cls: this.cls("check") });
+          const master = label.createEl("input", { type: "checkbox" });
+          master.checked = true;
+          master.onchange = () => {
+            e.changes.forEach((c, i) => {
+              c.selected = master.checked;
+              if (rowBoxes[i])
+                rowBoxes[i].checked = master.checked;
+            });
+            master.indeterminate = false;
+          };
+          label.createSpan({ text: e.label });
+          const syncMaster = () => {
+            const on = e.changes.filter((c) => c.selected).length;
+            master.checked = on > 0;
+            master.indeterminate = on > 0 && on < e.changes.length;
+          };
+          const table = contentEl.createEl("table", { cls: this.cls("table") });
+          e.changes.slice(0, MAX_ROWS).forEach((c) => {
+            const tr = table.createEl("tr");
+            const cb = tr.createEl("td", { cls: this.cls("pick") }).createEl("input", { type: "checkbox" });
+            cb.checked = c.selected;
+            cb.onchange = () => {
+              c.selected = cb.checked;
+              syncMaster();
+            };
+            rowBoxes.push(cb);
+            tr.createEl("td", { text: c.label });
+            if (c.toPath) {
+              tr.addClass(this.cls("moved"));
+              tr.createEl("td", { cls: this.cls("move"), text: c.fromPath + ":" + c.from + " \u2192 " + c.toPath + ":" + c.to });
+            } else {
+              tr.createEl("td", { cls: this.cls("move"), text: c.from + " \u2192 " + c.to });
+            }
+          });
+          if (e.changes.length > MAX_ROWS)
+            contentEl.createEl("div", { cls: this.cls("more"), text: t2("modal.andMore", { n: e.changes.length - MAX_ROWS }) });
+        } else {
+          head.setText(e.label);
+        }
+        e.broken.forEach((label) => contentEl.createDiv({ cls: this.cls("broken"), text: t2("modal.update.brokenRow", { label }) }));
+      }
+      onClose() {
+        this.contentEl.empty();
+      }
+    };
+    async function applyUpdates(plugin, entries, rewrite) {
+      let files = 0, total = 0, skipped = 0;
+      for (const e of entries) {
+        const keys = new Set(e.changes.filter((c) => c.selected).map((c) => c.key));
+        if (!keys.size)
+          continue;
+        if (e.editor) {
+          if (e.editor.getValue() !== e.original) {
+            skipped++;
+            continue;
+          }
+          const { newText, count } = rewrite(plugin, e.original, keys);
+          const cur = e.editor.getCursor();
+          e.editor.setValue(newText);
+          e.editor.setCursor(cur);
+          files++;
+          total += count;
+        } else {
+          let count = 0;
+          await plugin.app.vault.process(e.file, (data) => {
+            if (data !== e.original)
+              return data;
+            const out = rewrite(plugin, data, keys);
+            count = out.count;
+            return out.newText;
+          });
+          if (count) {
+            files++;
+            total += count;
+          } else
+            skipped++;
+        }
+      }
+      let msg = t2("notice.linksUpdatedVault", { n: total, files });
+      if (skipped)
+        msg += " " + t2("notice.updateSkipped", { n: skipped });
+      new Notice2(msg);
+    }
+    function openUpdatePreview(plugin, entries, rewrite, prefix) {
+      new UpdatePreviewModal(plugin.app, entries, (chosen) => applyUpdates(plugin, chosen, rewrite), prefix).open();
+    }
+    async function updateInActiveNote(plugin, rewrite, prefix) {
+      const view = plugin.app.workspace.getActiveViewOfType(MarkdownView);
+      const editor = view && view.editor;
+      const file = plugin.app.workspace.getActiveFile();
+      if (editor) {
+        const original2 = editor.getValue();
+        const c2 = rewrite(plugin, original2, null);
+        openUpdatePreview(plugin, [{ editor, label: file && file.path || t2("label.thisNote"), original: original2, changes: c2.changes, broken: c2.broken }], rewrite, prefix);
+        return;
+      }
+      if (!file) {
+        new Notice2(t2("notice.linksUpdated", { n: 0 }));
+        return;
+      }
+      const original = await plugin.app.vault.read(file);
+      const c = rewrite(plugin, original, null);
+      openUpdatePreview(plugin, [{ file, label: file.path, original, changes: c.changes, broken: c.broken }], rewrite, prefix);
+    }
+    async function scanVault(plugin, rewrite) {
+      const entries = [];
+      for (const f of plugin.app.vault.getMarkdownFiles()) {
+        const original = await plugin.app.vault.read(f);
+        const c = rewrite(plugin, original, null);
+        if (c.changes.length || c.broken.length)
+          entries.push({ file: f, label: f.path, original, changes: c.changes, broken: c.broken });
+      }
+      return entries;
+    }
+    async function updateInVault(plugin, rewrite, prefix) {
+      openUpdatePreview(plugin, await scanVault(plugin, rewrite), rewrite, prefix);
+    }
+    module2.exports = { UpdatePreviewModal, applyUpdates, openUpdatePreview, updateInActiveNote, updateInVault, scanVault };
+  }
+});
+
+// src/rename.js
+var require_rename = __commonJS({
+  "src/rename.js"(exports2, module2) {
+    "use strict";
+    var { Notice: Notice2 } = require("obsidian");
+    var { inTableCell: inTableCell2 } = require_markdown();
+    var { rewriteWikiLinks, findWikiLinks } = require_wikilink();
+    var { writeReportNote } = require_report_note();
+    var preview = require_update_preview();
+    var { t: t2 } = require_i18n();
+    var PREVIEW_CLASS = "heading-linker-preview";
+    function detectRename(before, after) {
+      if (!Array.isArray(before) || !Array.isArray(after))
+        return null;
+      if (before.length !== after.length)
+        return null;
+      let at = -1;
+      for (let i = 0; i < before.length; i++) {
+        if (before[i].text === after[i].text && before[i].level === after[i].level)
+          continue;
+        if (at >= 0)
+          return null;
+        at = i;
+      }
+      if (at < 0)
+        return null;
+      if (before[at].level !== after[at].level)
+        return null;
+      if (!before[at].text || !after[at].text)
+        return null;
+      return { from: before[at].text, to: after[at].text };
+    }
+    function headingsOfFingerprint(fingerprint) {
+      try {
+        const parsed = JSON.parse(fingerprint);
+        return Array.isArray(parsed && parsed.h) ? parsed.h : null;
+      } catch (e) {
+        return null;
+      }
+    }
+    var rewriteFor = (base, from, to, alsoDisplay) => (plugin, text, selected) => {
+      const collect = selected == null;
+      const changes = [];
+      const out = rewriteWikiLinks(text, (parts, link) => {
+        if (parts.file !== base || parts.heading !== from)
+          return null;
+        const k = link.start;
+        if (collect)
+          changes.push({ key: k, label: parts.display || parts.heading, from, to });
+        if (!collect && !selected.has(k))
+          return null;
+        const next = Object.assign({}, parts, { heading: to });
+        if (alsoDisplay && parts.display === from)
+          next.display = to;
+        return next;
+      }, inTableCell2);
+      changes.sort((a, b) => a.key - b.key);
+      return { newText: out.text, count: out.count, changes, broken: [] };
+    };
+    var methods = {
+      // Compare the headings a file had against the ones it has, and remember a rename until the
+      // rebuild timer fires. Asking on every keystroke would put a dialog in the middle of typing
+      // a heading, so nothing is offered until the edit has settled.
+      noteHeadingRename(file, previousFingerprint) {
+        if (this.settings.followHeadingRenames === "off")
+          return;
+        const before = headingsOfFingerprint(previousFingerprint);
+        const after = this.headingsOf(file);
+        const hit = before && detectRename(before, after);
+        if (!hit)
+          return;
+        if (!this.pendingRenames)
+          this.pendingRenames = [];
+        const chained = this.pendingRenames.find((r) => r.base === file.basename && r.to === hit.from);
+        if (!chained) {
+          this.pendingRenames.push({ base: file.basename, from: hit.from, to: hit.to });
+          return;
+        }
+        chained.to = hit.to;
+        if (chained.from === chained.to)
+          this.pendingRenames.splice(this.pendingRenames.indexOf(chained), 1);
+      },
+      // Fired from the rebuild timer. Several renames inside one window are offered one after
+      // another rather than merged: each is its own preview over its own links.
+      flushHeadingRenames() {
+        const queued = this.pendingRenames || [];
+        this.pendingRenames = [];
+        if (this.settings.followHeadingRenames === "off")
+          return;
+        for (const r of queued)
+          this.offerHeadingRename(r);
+      },
+      // In 'ask' the preview is never opened without a click — not even when the notice cannot be
+      // given one. A modal over the whole vault appearing on its own is what this setting rules out.
+      offerHeadingRename({ base, from, to }) {
+        if (this.settings.followHeadingRenames !== "ask") {
+          this.previewHeadingRename(base, from, to);
+          return;
+        }
+        const notice = new Notice2(t2("notice.headingRenamed", { from, to }), 15e3);
+        if (!notice.noticeEl || !notice.noticeEl.createEl)
+          return;
+        const act = notice.noticeEl.createEl("a", { text: t2("notice.headingRenamed.action"), cls: "heading-linker-notice-action" });
+        act.onclick = () => {
+          notice.hide();
+          this.previewHeadingRename(base, from, to);
+        };
+      },
+      previewHeadingRename(base, from, to) {
+        return preview.updateInVault(this, rewriteFor(base, from, to, true), PREVIEW_CLASS);
+      },
+      // A heading renamed while the plugin was off leaves links naming a heading that is gone. Which
+      // heading replaced it cannot be told after the fact — that is why the rename is followed as it
+      // happens — so this reports rather than guesses, and the reader decides.
+      async findBrokenHeadingLinks() {
+        const known = new Set(this.terms.map((term) => term.linktext));
+        const sources = new Set(this.terms.map((term) => term.fileBase));
+        const rows = [];
+        for (const f of this.app.vault.getMarkdownFiles()) {
+          const text = await this.app.vault.cachedRead(f);
+          for (const link of findWikiLinks(text)) {
+            const { file: base, heading } = link.parts;
+            if (!base || !heading || !sources.has(base))
+              continue;
+            if (known.has(`${base}#${heading}`))
+              continue;
+            rows.push({ note: f.path, base, heading });
+          }
+        }
+        return rows;
+      },
+      async reportBrokenHeadingLinks() {
+        let rows;
+        try {
+          rows = await this.findBrokenHeadingLinks();
+        } catch (e) {
+          new Notice2(t2("notice.reportFailed"));
+          return;
+        }
+        if (!rows.length) {
+          new Notice2(t2("notice.headingLinksWell"));
+          return;
+        }
+        const lines = [
+          "# " + t2("report.broken.title"),
+          "",
+          t2("report.broken.summary", { n: rows.length }),
+          "",
+          "| " + [t2("report.broken.note"), t2("report.broken.target")].join(" | ") + " |",
+          "|---|---|"
+        ];
+        const esc = (s) => String(s).replace(/\|/g, "\\|");
+        for (const r of rows)
+          lines.push(`| [[${esc(r.note.replace(/\.md$/i, ""))}]] | \`${esc(r.base)}#${esc(r.heading)}\` |`);
+        const file = await writeReportNote(this.app, t2("report.broken.file"), lines.join("\n") + "\n");
+        if (!file) {
+          new Notice2(t2("notice.reportFailed"));
+          return;
+        }
+        new Notice2(t2("notice.headingLinksBroken", { n: rows.length, file: file.path }));
+        const leaf = this.app.workspace.getLeaf && this.app.workspace.getLeaf(true);
+        if (leaf && leaf.openFile)
+          await leaf.openFile(file);
+        return file;
+      }
+    };
+    module2.exports = { methods, detectRename, headingsOfFingerprint, rewriteFor };
+  }
+});
+
 // src/locales/en.js
 var require_en2 = __commonJS({
   "src/locales/en.js"(exports2, module2) {
@@ -5266,6 +5726,26 @@ var require_en2 = __commonJS({
       "cmd.unlinkAllNotes": "Unlink headings: all notes",
       "cmd.collectThisNote": "Collect aliases from links: this note",
       "cmd.rebuildIndex": "Rebuild heading index",
+      "cmd.reportBrokenLinks": "Find heading links that no longer land",
+      "set.followRenames.name": "Follow heading renames",
+      "set.followRenames.desc": "Obsidian repairs links when a file is renamed, but not when a heading is. Rename one in a source file and the links pointing at it can be retargeted.",
+      "set.followRenames.off": "Do nothing",
+      "set.followRenames.ask": "Offer it",
+      "set.followRenames.preview": "Open the preview",
+      "notice.headingRenamed": "Heading renamed: \u201C{from}\u201D \u2192 \u201C{to}\u201D",
+      "notice.headingRenamed.action": "Update the links",
+      "notice.headingLinksWell": "Every heading link still lands.",
+      "notice.headingLinksBroken": "{n} heading link(s) no longer land \u2014 written to {file}",
+      "notice.reportFailed": "Could not write the report.",
+      "modal.update.title": "Update heading links",
+      "modal.update.attention": "{n} link(s) need attention.",
+      "modal.update.brokenRow": "{label} \u2014 no fix",
+      "notice.linksUpdatedVault": "Heading Linker: {n} link(s) updated across {files} note(s)",
+      "report.broken.file": "Broken heading links",
+      "report.broken.title": "Heading links that no longer land",
+      "report.broken.summary": "{n} link(s) name a heading their source file no longer has.",
+      "report.broken.note": "Note",
+      "report.broken.target": "Points at",
       "cmd.addSource": "Add this note to heading sources",
       "cmd.removeSource": "Remove this note from heading sources",
       "cmd.ignoreSource": "Ignore this note as a heading source",
@@ -5427,6 +5907,26 @@ var require_ru2 = __commonJS({
       "cmd.unlinkAllNotes": "\u0423\u0431\u0440\u0430\u0442\u044C \u0441\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438: \u0432\u0441\u0435 \u0437\u0430\u043C\u0435\u0442\u043A\u0438",
       "cmd.collectThisNote": "\u0421\u043E\u0431\u0440\u0430\u0442\u044C \u043F\u0441\u0435\u0432\u0434\u043E\u043D\u0438\u043C\u044B \u0438\u0437 \u0441\u0441\u044B\u043B\u043E\u043A: \u044D\u0442\u0430 \u0437\u0430\u043C\u0435\u0442\u043A\u0430",
       "cmd.rebuildIndex": "\u041F\u0435\u0440\u0435\u0441\u0442\u0440\u043E\u0438\u0442\u044C \u0438\u043D\u0434\u0435\u043A\u0441 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u0432",
+      "cmd.reportBrokenLinks": "\u041D\u0430\u0439\u0442\u0438 \u0441\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0438\u0441\u0447\u0435\u0437\u043D\u0443\u0432\u0448\u0438\u0435 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438",
+      "set.followRenames.name": "\u0421\u043B\u0435\u0434\u0438\u0442\u044C \u0437\u0430 \u043F\u0435\u0440\u0435\u0438\u043C\u0435\u043D\u043E\u0432\u0430\u043D\u0438\u0435\u043C \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u0432",
+      "set.followRenames.desc": "Obsidian \u0447\u0438\u043D\u0438\u0442 \u0441\u0441\u044B\u043B\u043A\u0438 \u043F\u0440\u0438 \u043F\u0435\u0440\u0435\u0438\u043C\u0435\u043D\u043E\u0432\u0430\u043D\u0438\u0438 \u0444\u0430\u0439\u043B\u0430, \u043D\u043E \u043D\u0435 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0430. \u041F\u0435\u0440\u0435\u0438\u043C\u0435\u043D\u0443\u0439\u0442\u0435 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A \u0432 \u0444\u0430\u0439\u043B\u0435-\u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0435 \u2014 \u0438 \u0441\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u043D\u0435\u0433\u043E \u043C\u043E\u0436\u043D\u043E \u043F\u0435\u0440\u0435\u043D\u0430\u0446\u0435\u043B\u0438\u0442\u044C.",
+      "set.followRenames.off": "\u041D\u0438\u0447\u0435\u0433\u043E \u043D\u0435 \u0434\u0435\u043B\u0430\u0442\u044C",
+      "set.followRenames.ask": "\u041F\u0440\u0435\u0434\u043B\u0430\u0433\u0430\u0442\u044C",
+      "set.followRenames.preview": "\u0421\u0440\u0430\u0437\u0443 \u043E\u0442\u043A\u0440\u044B\u0432\u0430\u0442\u044C \u043F\u0440\u0435\u0434\u043F\u0440\u043E\u0441\u043C\u043E\u0442\u0440",
+      "notice.headingRenamed": "\u0417\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A \u043F\u0435\u0440\u0435\u0438\u043C\u0435\u043D\u043E\u0432\u0430\u043D: \xAB{from}\xBB \u2192 \xAB{to}\xBB",
+      "notice.headingRenamed.action": "\u041E\u0431\u043D\u043E\u0432\u0438\u0442\u044C \u0441\u0441\u044B\u043B\u043A\u0438",
+      "notice.headingLinksWell": "\u0412\u0441\u0435 \u0441\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438 \u0432\u0435\u0434\u0443\u0442 \u0442\u0443\u0434\u0430, \u043A\u0443\u0434\u0430 \u0443\u043A\u0430\u0437\u044B\u0432\u0430\u044E\u0442.",
+      "notice.headingLinksBroken": "\u0421\u0441\u044B\u043B\u043E\u043A \u0432 \u043D\u0438\u043A\u0443\u0434\u0430: {n} \u2014 \u0437\u0430\u043F\u0438\u0441\u0430\u043D\u043E \u0432 {file}",
+      "notice.reportFailed": "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0437\u0430\u043F\u0438\u0441\u0430\u0442\u044C \u043E\u0442\u0447\u0451\u0442.",
+      "modal.update.title": "\u041E\u0431\u043D\u043E\u0432\u0438\u0442\u044C \u0441\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438",
+      "modal.update.attention": "\u0421\u0441\u044B\u043B\u043E\u043A, \u0442\u0440\u0435\u0431\u0443\u044E\u0449\u0438\u0445 \u0432\u043D\u0438\u043C\u0430\u043D\u0438\u044F: {n}.",
+      "modal.update.brokenRow": "{label} \u2014 \u043D\u0435 \u0438\u0441\u043F\u0440\u0430\u0432\u0438\u0442\u044C",
+      "notice.linksUpdatedVault": "Heading Linker: \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u043E \u0441\u0441\u044B\u043B\u043E\u043A \u2014 {n} \u0432 \u0437\u0430\u043C\u0435\u0442\u043A\u0430\u0445: {files}",
+      "report.broken.file": "\u0421\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0438\u0441\u0447\u0435\u0437\u043D\u0443\u0432\u0448\u0438\u0435 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438",
+      "report.broken.title": "\u0421\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438, \u043A\u043E\u0442\u043E\u0440\u044B\u0445 \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435\u0442",
+      "report.broken.summary": "\u0421\u0441\u044B\u043B\u043E\u043A, \u043D\u0430\u0437\u044B\u0432\u0430\u044E\u0449\u0438\u0445 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A, \u043A\u043E\u0442\u043E\u0440\u043E\u0433\u043E \u0432 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0435 \u0443\u0436\u0435 \u043D\u0435\u0442: {n}.",
+      "report.broken.note": "\u0417\u0430\u043C\u0435\u0442\u043A\u0430",
+      "report.broken.target": "\u0423\u043A\u0430\u0437\u044B\u0432\u0430\u0435\u0442 \u043D\u0430",
       "cmd.addSource": "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u044D\u0442\u0443 \u0437\u0430\u043C\u0435\u0442\u043A\u0443 \u0432 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0438 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u0432",
       "cmd.removeSource": "\u0423\u0431\u0440\u0430\u0442\u044C \u044D\u0442\u0443 \u0437\u0430\u043C\u0435\u0442\u043A\u0443 \u0438\u0437 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u043E\u0432 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u0432",
       "cmd.ignoreSource": "\u0418\u0433\u043D\u043E\u0440\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u044D\u0442\u0443 \u0437\u0430\u043C\u0435\u0442\u043A\u0443 \u043A\u0430\u043A \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A",
@@ -5564,6 +6064,7 @@ var { HeadingSuggest, suggestAvailable } = require_heading_suggest();
 var { initI18n, withFamily, t, plural } = require_i18n();
 var { buildMenu } = require_menu_verbs();
 var aliases = require_aliases();
+var rename = require_rename();
 var { ChoicePopover } = require_choices();
 function parseHeadingAliases(text, headings) {
   const lines = text.split("\n");
@@ -5622,6 +6123,7 @@ var HeadingLinkerPlugin = class extends Plugin {
       this.rebuildIndex();
       this.rerenderViews();
       this.updateStatusBar();
+      this.flushHeadingRenames();
     }, 600, true);
     this.statusBarEl = this.addStatusBarItem();
     this.statusBarEl.addClass("mod-clickable");
@@ -5638,8 +6140,10 @@ var HeadingLinkerPlugin = class extends Plugin {
         return;
       await this.loadFileAliases(file);
       const next = this.fileFingerprint(file);
-      if (this.headingFingerprints.get(file.path) === next)
+      const previous = this.headingFingerprints.get(file.path);
+      if (previous === next)
         return;
+      this.noteHeadingRename(file, previous);
       this.headingFingerprints.set(file.path, next);
       this.scheduleRebuild();
     }));
@@ -5794,6 +6298,7 @@ var HeadingLinkerPlugin = class extends Plugin {
       new Notice(t("notice.indexRebuilt"));
       this.warnDuplicateHeadings();
     } });
+    this.addCommand({ id: "report-broken-links", name: t("cmd.reportBrokenLinks"), callback: () => this.reportBrokenHeadingLinks() });
     this.addPathCommand("add-source", t("cmd.addSource"), "glossarySources", true, (p) => this.settings.glossaryMode === "selected" && !this.pathListed("glossarySources", p));
     this.addPathCommand("remove-source", t("cmd.removeSource"), "glossarySources", false, (p) => this.pathListed("glossarySources", p));
     this.addPathCommand("ignore-source", t("cmd.ignoreSource"), "excludeSources", true, (p) => !this.pathListed("excludeSources", p));
@@ -6167,5 +6672,5 @@ var HeadingLinkerPlugin = class extends Plugin {
     });
   }
 };
-Object.assign(HeadingLinkerPlugin.prototype, matcher, highlight, materialize, aliases, api, indexEvents);
+Object.assign(HeadingLinkerPlugin.prototype, matcher, highlight, materialize, aliases, rename.methods, api, indexEvents);
 module.exports = HeadingLinkerPlugin;

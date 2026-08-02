@@ -12,7 +12,7 @@
 
 Finds words in your notes and turns them into links to matching **headings** inside files you nominate as glossaries — in any word form (declensions, plurals), not just exact spellings. Keep a `Guide.md` with a `## Projectile` heading, and every "projectile", "projectiles" or other form elsewhere gets highlighted and can become `[[Guide#Projectile|projectiles]]`: a real link that opens the file at that heading, with the note's own wording kept as the visible text.
 
-> **Links headings as terms — it won't treat a whole note as one.** If you want words to link to whole **notes**, and to collect new aliases from links you've already made by hand, that's what this plugin leaves out, and its sibling [Glossary Linker](https://community.obsidian.md/plugins/glossary-linker) does exactly that, on the same matching engine. The two are made to work together.
+> **Links headings as terms — it won't treat a whole note as one.** If you want words to link to whole **notes**, that's what this plugin leaves out, and its sibling [Glossary Linker](https://community.obsidian.md/plugins/glossary-linker) does exactly that, on the same matching engine. The two are made to work together.
 
 Available in the Obsidian community catalog: **[community.obsidian.md/plugins/heading-linker](https://community.obsidian.md/plugins/heading-linker)**.
 
@@ -137,6 +137,7 @@ Enable only the languages your vault actually uses: since same-script languages 
 | **Link headings: this note / selection / all notes** | Turn matches into links, with a preview. |
 | **Unlink headings: this note / selection / all notes** | Revert heading links to plain text, with a preview. |
 | **Rebuild heading index** | Re-scan the glossary files for headings and aliases. |
+| **Find heading links that no longer land** | Write a note listing every link that names a heading its source file no longer has. |
 
 Plus per-note toggles that mirror the explorer menu, each shown only when it applies: **Add / Remove this note … heading sources**, **Ignore / Stop ignoring this note as a heading source**, **Never link in this note / Stop always-excluding**, **Include this note in scope / Remove from scope**.
 
@@ -149,6 +150,7 @@ Plus per-note toggles that mirror the explorer menu, each shown only when it app
 | **Ignored sources** | — | files and folders whose headings are never indexed, even inside a chosen source |
 | **Heading levels** | H1–H6 | which levels become terms |
 | **Read alias comments** | on | pick up `%% alias: … %%` lines under a heading as extra wordings for it |
+| **Follow heading renames** | `Offer it` | rename a heading in a source file and the links pointing at it are retargeted — offered, opened straight into the preview, or ignored |
 
 **Scope**
 | Setting | Default | Description |
