@@ -89,13 +89,13 @@ describe('editor menu', () => {
 
     const menu = menuFor();
     const titles = menu.titles();
-    // The two word items act on one word, so they share a group; the heading is a different
-    // object and stays flat, where its title can still name it.
-    assert.ok(titles.includes('Exclude “specifically” ▸ This spelling'), JSON.stringify(titles));
-    assert.ok(titles.includes('Exclude “specifically” ▸ Every form'), JSON.stringify(titles));
+    // All three are ways to stop the word under the cursor, so they read as one set — the
+    // heading among them, even though it is the heading text that gets written.
+    assert.ok(titles.includes('Stop linking “specifically” ▸ this spelling'), JSON.stringify(titles));
+    assert.ok(titles.includes('Stop linking “specifically” ▸ every form of it'), JSON.stringify(titles));
     assert.ok(titles.includes('Add "Specification" to excluded headings'), JSON.stringify(titles));
 
-    await menu.items.find((e) => e.title === 'This spelling').click();
+    await menu.items.find((e) => e.title === 'this spelling').click();
     assert.strictEqual(plugin.settings.excludeWords, 'specifically');
     assert.strictEqual(plugin.settings.excludeTerms, '');
   });
@@ -109,7 +109,7 @@ describe('editor menu', () => {
     });
 
     // The base form under the current match mode, not the spelling that was clicked.
-    await menuFor().items.find((e) => e.title === 'Every form').click();
+    await menuFor().items.find((e) => e.title === 'every form of it').click();
     assert.strictEqual(plugin.settings.excludeWords, 'specif*');
   });
 
@@ -122,7 +122,7 @@ describe('editor menu', () => {
       foreign: [],
     });
 
-    await menuFor().items.find((e) => e.title === 'Every form').click();
+    await menuFor().items.find((e) => e.title === 'every form of it').click();
     assert.strictEqual(plugin.settings.excludeWords, 'specifically*');
   });
 
@@ -148,8 +148,11 @@ describe('editor menu', () => {
       foreign: [],
     });
 
-    const titles = menuFor().titles();
-    assert.ok(titles.includes('Add "Central nervous system" to excluded headings'), JSON.stringify(titles));
+    const menu = menuFor();
+    // And with the word items gone the heading is alone, so it keeps its full title rather
+    // than a submenu holding one line.
+    assert.ok(menu.titles().includes('Add "Central nervous system" to excluded headings'), JSON.stringify(menu.titles()));
+    assert.ok(!menu.groups().some((g) => /Exclude/.test(g)), JSON.stringify(menu.groups()));
   });
 
   it('offers to undo a word exclusion once the word is excluded', async () => {
@@ -170,26 +173,37 @@ describe('editor menu', () => {
     assert.deepStrictEqual(menuFor().titles(), []);
   });
 
-  it('keeps the lone exclusion item flat when no sibling offers one', async () => {
-    // A submenu holding one line is a click to reach one line.
+  it('offers the word lists on the heading’s own wording too', async () => {
+    // Reported on a term named for an everyday word: excluding the heading takes it out of
+    // the index and the autocomplete, which is not what "stop linking this word" means.
     const plugin = await load();
-    plugin.matchAtCursor = () => hitWith();
-    fakeApp.plugins.plugins = {};
-    const menu = menuFor();
-    assert.ok(!menu.groups().some((g) => /Exclude/.test(g)), 'wrapped a single item in a submenu');
-    assert.ok(menu.titles().some((x) => /^Add "/.test(x)), JSON.stringify(menu.titles()));
+    plugin.matchAtCursor = () => ({
+      line: 0,
+      match: { start: 0, end: 5, display: 'Наряд', alts: [], linktext: 'Guide#Наряд' },
+      foreign: [],
+    });
+
+    const titles = menuFor().titles();
+    assert.ok(titles.includes('Stop linking “Наряд” ▸ this spelling'), JSON.stringify(titles));
+    assert.ok(titles.includes('Stop linking “Наряд” ▸ every form of it'), JSON.stringify(titles));
+    assert.ok(titles.includes('Add "Наряд" to excluded headings'), JSON.stringify(titles));
   });
 
   it('shares one Exclude submenu with the sibling', async () => {
+    // A phrase leaves us a single item, so what turns it into a group here is the sibling
+    // offering the same verb on the same object.
     const plugin = await load();
-    plugin.matchAtCursor = () => hitWith();
+    plugin.matchAtCursor = () => ({
+      line: 0,
+      match: { start: 0, end: 21, display: 'brain and spinal cord', alts: [], linktext: 'Guide#Central nervous system' },
+      foreign: [],
+    });
     fakeApp.plugins.plugins = {
       'heading-linker': plugin,
       'glossary-linker': { api: { linker: { apiVersion: 1, id: 'glossary-linker', kind: 'prose', precedence: 10, offers: () => true } } },
     };
     const menu = menuFor();
-    assert.ok(menu.groups().includes('Exclude “Spawn”'), JSON.stringify(menu.groups()));
-    assert.ok(menu.titles().includes('Exclude “Spawn” ▸ This heading'), JSON.stringify(menu.titles()));
+    assert.ok(menu.titles().includes('Exclude “Central nervous system” ▸ The heading'), JSON.stringify(menu.titles()));
     fakeApp.plugins.plugins = {};
   });
 });

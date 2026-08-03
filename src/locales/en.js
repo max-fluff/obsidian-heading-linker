@@ -79,7 +79,7 @@ module.exports = {
   'exclude.removeForm': 'Remove "{value}" from {noun}',
   'exclude.addStem': 'Add every form of "{value}" to {noun}',
   'exclude.removeStem': 'Remove every form of "{value}" from {noun}',
-  'exclude.shortTerm': 'This heading',
+  'exclude.shortTerm': 'The heading',
 
   // Modals
   'modal.materialize.title': 'Turn words into heading links',

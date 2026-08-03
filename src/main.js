@@ -149,15 +149,17 @@ class HeadingLinkerPlugin extends Plugin {
       const link = this.headingLinkAt(editor);
 
       // Three wishes on one word: stop this spelling, stop every form behind it, drop the
-      // heading it reached. Only a lone word can go on the word list — it is read word by word.
+      // heading it reached. Offered even where the word is the heading's own wording — the
+      // heading then keeps its place in the index and its autocomplete, and only stops
+      // catching that word in prose. Only a lone word can go on the word list, which is read
+      // a word at a time.
       const excludeItem = (value, display) => {
         if (!this.settings.menuExclude) return;
-        const label = this.labelOf(value);
-        if (display && oneWord(display) && display.toLowerCase() !== label.toLowerCase()) {
+        if (display && oneWord(display)) {
           this.addExclusionMenuItem(menu, 'excludeWords', display, 'form');
           this.addExclusionMenuItem(menu, 'excludeWords', display, 'stem');
         }
-        this.addExclusionMenuItem(menu, 'excludeTerms', label);
+        this.addExclusionMenuItem(menu, 'excludeTerms', this.labelOf(value));
       };
 
       if (link) {
