@@ -1,7 +1,7 @@
 {
   "name": "obsidian-heading-linker",
   "version": "1.3.0",
-  "description": "Obsidian plugin: highlight words in any word form and turn them into links to matching headings in your glossary files.",
+  "description": "Obsidian plugin: highlight words in any word form and turn them into links to matching headings anywhere in your vault.",
   "author": "max-fluff",
   "license": "MIT",
   "repository": {
