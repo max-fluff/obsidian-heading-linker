@@ -28,6 +28,7 @@ function makePlugin({ files = [], settings = {}, aliases = new Map() } = {}) {
   );
   p.activeLanguages = [en];
   p.keysCache = new Map();
+  p.excludedWords = new Set();
   p.index = { byKey: new Map(), termCount: 0 };
   p.terms = [];
   p.aliasCache = aliases;
@@ -94,6 +95,45 @@ describe('rebuildIndex', () => {
     const p = makePlugin({ files, settings: { headingLevels: [1, 2, 3], minTermLength: 2, excludeTerms: 'banned' } });
     p.rebuildIndex();
     assert.deepStrictEqual(p.terms.map((t) => t.label), ['Keep']);
+  });
+
+  it('stops an excluded word without losing the heading it reached', () => {
+    // Reported as issue #1: "specifically" linked to the "Specification" heading, and the
+    // two share a stem, so excluding the form must not take the heading down with it.
+    const files = [{ base: 'Guide', headings: [{ text: 'Specification', level: 2 }] }];
+    const p = makePlugin({ files, settings: { excludeWords: 'specifically' } });
+    p.rebuildIndex();
+    const found = p.findMatches('this is specifically about the specification', null);
+    assert.deepStrictEqual(found.map((m) => m.display), ['specification']);
+  });
+
+  it('excludes a word whatever its case', () => {
+    const files = [{ base: 'Guide', headings: [{ text: 'Specification', level: 2 }] }];
+    const p = makePlugin({ files, settings: { excludeWords: 'Specifically' } });
+    p.rebuildIndex();
+    assert.deepStrictEqual(p.findMatches('Specifically, no.', null), []);
+  });
+
+  it('silences every form behind a starred line', () => {
+    const files = [{ base: 'Guide', headings: [{ text: 'Specification', level: 2 }] }];
+    const p = makePlugin({ files, settings: { excludeWords: 'specifically*' } });
+    p.rebuildIndex();
+    assert.deepStrictEqual(p.findMatches('specifically about the specification', null), []);
+  });
+
+  it('reads a starred line whether the stem or a form of it was written', () => {
+    // "specif*" and "specifically*" are the same wish; only one of them is a word.
+    const files = [{ base: 'Guide', headings: [{ text: 'Specification', level: 2 }] }];
+    const bare = makePlugin({ files, settings: { excludeWords: 'specif*' } });
+    bare.rebuildIndex();
+    assert.deepStrictEqual(bare.findMatches('the specification', null), []);
+  });
+
+  it('leaves a multi-word heading alone when one of its words is excluded', () => {
+    const files = [{ base: 'Guide', headings: [{ text: 'Vision radius', level: 2 }] }];
+    const p = makePlugin({ files, settings: { excludeWords: 'vision' } });
+    p.rebuildIndex();
+    assert.deepStrictEqual(p.findMatches('the vision radius here', null).map((m) => m.display), ['vision radius']);
   });
 
   it('drops a duplicate heading inside the same file', () => {

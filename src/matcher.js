@@ -13,6 +13,7 @@ const core = createMatcher({
   idOf: (c) => c.linktext,
   selfIdOf: (c) => c.fileBase,
   fieldsOf: (c) => ({ linktext: c.linktext, label: c.label }),
+  accepts: (plugin, matched, token) => !(matched.wc === 1 && plugin.wordSilenced(token.raw)),
 });
 
 module.exports = Object.assign({}, core, {
@@ -26,6 +27,14 @@ module.exports = Object.assign({}, core, {
     const minTermLength = Math.max(1, this.settings.minTermLength || 1);
     const excludeTerms = new Set(splitLines(this.settings.excludeTerms).map((s) => s.toLowerCase()));
     const levels = new Set(this.settings.headingLevels || [1, 2, 3, 4, 5, 6]);
+    this.excludedWords = new Set();
+    this.excludedStems = new Set();
+    for (const line of splitLines(this.settings.excludeWords)) {
+      if (!line.endsWith('*')) { this.excludedWords.add(line.toLowerCase()); continue; }
+      // Reduced rather than stored as typed, so a starred line works whether the reader wrote
+      // the stem or any form of it.
+      for (const k of this.keysFor(line.slice(0, -1))) this.excludedStems.add(k);
+    }
 
     this.headingFingerprints = new Map();
     for (const file of this.glossaryFilesList()) {
@@ -87,6 +96,13 @@ module.exports = Object.assign({}, core, {
     // straight from the settings tab or the "Rebuild index" button changed the index
     // without telling anyone — the glossary linker had it right.
     this.notifyIndexChange();
+  },
+
+  // Whether the excluded-words list silences this written word — by its own spelling, or
+  // through a starred line standing for a stem and every form that reduces to it.
+  wordSilenced(word) {
+    if (this.excludedWords.has(word.toLowerCase())) return true;
+    return this.excludedStems.size > 0 && this.keysFor(word).some((k) => this.excludedStems.has(k));
   },
 
   // Base (dictionary) form of a word: the first claiming language that has one wins, else

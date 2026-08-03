@@ -167,6 +167,7 @@ Plus per-note toggles that mirror the explorer menu, each shown only when it app
 | **Languages** | English + interface language | per-language toggle; reorder with ↑↓ to set priority when same-script languages overlap |
 | **Link first occurrence only** | off | link only the first occurrence of each heading per page |
 | **Excluded headings** | — | heading texts that never become terms |
+| **Excluded words** | — | written words that never become a link, even where they match a heading. A line stops that spelling alone; `specifically*` stops every form behind it. The heading keeps linking either way, so "specifically" can be silenced without losing "specification" |
 
 **Highlighting**
 | Setting | Default | Description |

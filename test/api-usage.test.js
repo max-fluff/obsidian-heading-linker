@@ -83,6 +83,16 @@ describe('api: collectCandidates', () => {
     assert.strictEqual(fly.count, 3);
     assert.ok(!cands.some((c) => c.display === 'projectile'), 'a heading is not offered as a candidate');
   });
+
+  it('holds back a word the exclusion list silences', async () => {
+    // Offering a word the reader has just silenced reads as the setting having no effect.
+    const p = makePlugin({ files: [guide], notes: [note('A', 'fly fly fly')] });
+    for (const line of ['fly', 'fly*']) {
+      p.settings.excludeWords = line;
+      p.rebuildIndex();
+      assert.ok(!(await p.collectCandidates()).some((c) => c.display === 'fly'), `offered anyway for "${line}"`);
+    }
+  });
 });
 
 describe('resolveHeadingLink', () => {

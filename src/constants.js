@@ -17,6 +17,7 @@ const DEFAULT_SETTINGS = {
   enabledLanguages: null, // null until first-run defaults are picked
   languageOrder: [], // ids in priority order (first = highest); overrides module defaults
   excludeTerms: '', // heading texts to drop from the index entirely
+  excludeWords: '', // written words that never become a link, whatever heading they match
   linkFirstOnly: false,
   // Who wins a word both linkers match. Read by the other side through the api, so both
   // reach the same verdict; a heading anchor is narrower than a whole note, hence higher.

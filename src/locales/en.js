@@ -72,8 +72,14 @@ module.exports = {
 
   // Exclusion menu
   'exclude.terms': 'excluded headings',
+  'exclude.words': 'excluded words',
   'exclude.add': 'Add "{value}" to {noun}',
   'exclude.remove': 'Remove "{value}" from {noun}',
+  'exclude.addForm': 'Add "{value}" to {noun}',
+  'exclude.removeForm': 'Remove "{value}" from {noun}',
+  'exclude.addStem': 'Add every form of "{value}" to {noun}',
+  'exclude.removeStem': 'Remove every form of "{value}" from {noun}',
+  'exclude.shortTerm': 'This heading',
 
   // Modals
   'modal.materialize.title': 'Turn words into heading links',
@@ -158,6 +164,8 @@ module.exports = {
   'set.linkFirstOnly.desc': 'Link only the first mention of each heading per note.',
   'set.excludeTerms.name': 'Excluded headings',
   'set.excludeTerms.desc': 'Heading texts to drop from the index entirely, one per line. Their word forms stop linking too.',
+  'set.excludeWords.name': 'Excluded words',
+  'set.excludeWords.desc': 'Written words, one per line, that never become a link even when they match a heading. A line stops that spelling alone; end it with * to stop every form of the word. The heading itself keeps linking either way.',
 
   // Settings — highlighting
   'set.highlightInReading.desc': 'Underline matched words in rendered notes.',

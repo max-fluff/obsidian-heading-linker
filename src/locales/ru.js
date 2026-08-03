@@ -58,8 +58,14 @@ module.exports = {
   'menu.openNewTabTitle': 'Какой заголовок открыть в новой вкладке?',
 
   'exclude.terms': 'исключённые заголовки',
+  'exclude.words': 'исключённые слова',
   'exclude.add': 'Добавить «{value}» в {noun}',
   'exclude.remove': 'Убрать «{value}» из {noun}',
+  'exclude.addForm': 'Добавить «{value}» в {noun}',
+  'exclude.removeForm': 'Убрать «{value}» из {noun}',
+  'exclude.addStem': 'Добавить все формы «{value}» в {noun}',
+  'exclude.removeStem': 'Убрать все формы «{value}» из {noun}',
+  'exclude.shortTerm': 'Этот заголовок',
 
   'modal.materialize.title': 'Превратить слова в ссылки на заголовки',
   'modal.materialize.ambiguous': '{n} слов(о) совпадает с несколькими заголовками — выберите или пропустите:',
@@ -133,6 +139,8 @@ module.exports = {
   'set.linkFirstOnly.desc': 'Связывать только первое упоминание каждого заголовка в заметке.',
   'set.excludeTerms.name': 'Исключённые заголовки',
   'set.excludeTerms.desc': 'Тексты заголовков, полностью убираемые из индекса, по одному в строке. Их словоформы тоже перестают связываться.',
+  'set.excludeWords.name': 'Исключённые слова',
+  'set.excludeWords.desc': 'Написания, по одному в строке, которые никогда не становятся ссылкой, даже если совпадают с заголовком. Строка останавливает только это написание; со звёздочкой на конце — все формы слова. Сам заголовок в обоих случаях продолжает связываться.',
 
   'set.highlightInReading.desc': 'Подчёркивать совпавшие слова в отрисованных заметках.',
   'set.editingHighlight.desc': 'Подчёркивать совпавшие слова при редактировании.',

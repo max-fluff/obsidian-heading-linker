@@ -77,6 +77,91 @@ describe('editor menu', () => {
     assert.ok(titles.some((x) => /^Remove/.test(x)), `no undo item: ${JSON.stringify(titles)}`);
   });
 
+  it('offers the written form on a word the heading only matched through its stem', async () => {
+    // Issue #1: on "specifically" the only offer was to drop the "Specification" heading,
+    // which is the term the reader wants to keep.
+    const plugin = await load();
+    plugin.matchAtCursor = () => ({
+      line: 0,
+      match: { start: 0, end: 12, display: 'specifically', alts: [], linktext: 'Guide#Specification' },
+      foreign: [],
+    });
+
+    const menu = menuFor();
+    const titles = menu.titles();
+    // The two word items act on one word, so they share a group; the heading is a different
+    // object and stays flat, where its title can still name it.
+    assert.ok(titles.includes('Exclude “specifically” ▸ This spelling'), JSON.stringify(titles));
+    assert.ok(titles.includes('Exclude “specifically” ▸ Every form'), JSON.stringify(titles));
+    assert.ok(titles.includes('Add "Specification" to excluded headings'), JSON.stringify(titles));
+
+    await menu.items.find((e) => e.title === 'This spelling').click();
+    assert.strictEqual(plugin.settings.excludeWords, 'specifically');
+    assert.strictEqual(plugin.settings.excludeTerms, '');
+  });
+
+  it('adds the starred line when the reader asks for every form', async () => {
+    const plugin = await load();
+    plugin.matchAtCursor = () => ({
+      line: 0,
+      match: { start: 0, end: 12, display: 'specifically', alts: [], linktext: 'Guide#Specification' },
+      foreign: [],
+    });
+
+    // The base form under the current match mode, not the spelling that was clicked.
+    await menuFor().items.find((e) => e.title === 'Every form').click();
+    assert.strictEqual(plugin.settings.excludeWords, 'specif*');
+  });
+
+  it('writes the whole word when the match mode keeps forms apart', async () => {
+    const plugin = await load();
+    plugin.settings.matchMode = 'exact';
+    plugin.matchAtCursor = () => ({
+      line: 0,
+      match: { start: 0, end: 12, display: 'specifically', alts: [], linktext: 'Guide#Specification' },
+      foreign: [],
+    });
+
+    await menuFor().items.find((e) => e.title === 'Every form').click();
+    assert.strictEqual(plugin.settings.excludeWords, 'specifically*');
+  });
+
+  it('offers to undo a starred line from another form of the same word', async () => {
+    // The line was written from "specifically"; the reader meets "specification" and wants
+    // it back. Looking for "specification*" would find nothing.
+    const plugin = await load();
+    plugin.matchAtCursor = () => null;
+    plugin.wordAtCursor = () => null;
+    plugin.rawWordAtCursor = () => 'specification';
+    plugin.settings.excludeWords = 'specifically*';
+
+    const titles = menuFor().titles();
+    assert.ok(titles.includes('Remove every form of "specification" from excluded words'), JSON.stringify(titles));
+  });
+
+  it('keeps a phrase on the heading list, where excluding it has an effect', async () => {
+    // The word list is read one word at a time, so a phrase written there is never consulted.
+    const plugin = await load();
+    plugin.matchAtCursor = () => ({
+      line: 0,
+      match: { start: 0, end: 21, display: 'brain and spinal cord', alts: [], linktext: 'Guide#Central nervous system' },
+      foreign: [],
+    });
+
+    const titles = menuFor().titles();
+    assert.ok(titles.includes('Add "Central nervous system" to excluded headings'), JSON.stringify(titles));
+  });
+
+  it('offers to undo a word exclusion once the word is excluded', async () => {
+    const plugin = await load();
+    plugin.matchAtCursor = () => null;
+    plugin.wordAtCursor = () => null;
+    plugin.settings.excludeWords = 'spawn';
+
+    const titles = menuFor().titles();
+    assert.ok(titles.includes('Remove "spawn" from excluded words'), JSON.stringify(titles));
+  });
+
   it('offers nothing on a word it neither matches nor excludes', async () => {
     const plugin = await load();
     plugin.matchAtCursor = () => null;
@@ -104,7 +189,7 @@ describe('editor menu', () => {
     };
     const menu = menuFor();
     assert.ok(menu.groups().includes('Exclude “Spawn”'), JSON.stringify(menu.groups()));
-    assert.ok(menu.titles().includes('Exclude “Spawn” ▸ Add to excluded headings'), JSON.stringify(menu.titles()));
+    assert.ok(menu.titles().includes('Exclude “Spawn” ▸ This heading'), JSON.stringify(menu.titles()));
     fakeApp.plugins.plugins = {};
   });
 });

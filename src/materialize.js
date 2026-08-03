@@ -6,6 +6,9 @@ const { MaterializePreviewModal, UnlinkPreviewModal, ChooseTermModal } = require
 const { candidatesFor } = require('./shared/discover');
 const { t, plural } = require('./shared/i18n');
 
+const LONG = { term: '', form: 'Form', stem: 'Stem' };
+const SHORT = { term: 'exclude.shortTerm', form: 'exclude.shortForm', stem: 'exclude.shortStem' };
+
 // Turning words into heading links and reverting them. Mixed into the plugin prototype.
 module.exports = {
   collectMatches(text, currentFile) {
@@ -220,35 +223,64 @@ module.exports = {
   },
 
 
-  isExcluded(value) {
+  isExcluded(listKey, value) {
     const v = value.toLowerCase();
-    return splitLines(this.settings.excludeTerms).some((l) => l.toLowerCase() === v);
+    return splitLines(this.settings[listKey]).some((l) => l.toLowerCase() === v);
   },
 
-  // Toggle `value` (a heading text) in the excluded-headings list. Tagged with the verb, so
-  // the builder collects it with whatever else offers to exclude the same word.
-  addExclusionMenuItem(menu, value) {
-    const noun = t('exclude.terms');
-    const excluded = this.isExcluded(value);
-    const key = excluded ? 'exclude.remove' : 'exclude.add';
-    menu.tagged('exclude', { value }, (i, grouped) => i
-      // Inside the group the parent already names the word, so the title drops it.
-      .setTitle(t(grouped ? key + 'Short' : key, { value, noun }))
-      .setIcon(excluded ? 'rotate-ccw' : 'trash-2')
-      .onClick(() => this.setExcluded(value, !excluded)));
+  // A starred line carries the word's base form under the current match mode — a stem, a
+  // stripped ending or the whole word — and stands for every form that reduces to it.
+  exclusionLine(kind, value) {
+    return kind === 'stem' ? `${this.keysFor(value)[0]}*` : value;
   },
 
-  async setExcluded(value, add) {
+  // The base of the starred line that silences this word, or null. Searched rather than
+  // built: the line may have been written from a different form of the same word.
+  stemLineSilencing(word) {
+    const keys = this.keysFor(word);
+    for (const line of splitLines(this.settings.excludeWords)) {
+      if (!line.endsWith('*')) continue;
+      const base = line.slice(0, -1);
+      if (this.keysFor(base).some((k) => keys.includes(k))) return base;
+    }
+    return null;
+  },
+
+  // Toggle a line in one of the two exclusion lists. `kind` is the wish behind the item — a
+  // heading ('term'), this spelling ('form') or every form behind it ('stem') — and picks the
+  // wording. Tagged with the verb, so the builder collects it with whatever else offers to
+  // exclude the same word.
+  addExclusionMenuItem(menu, listKey, value, kind = 'term') {
+    const noun = t(kind === 'term' ? 'exclude.terms' : 'exclude.words');
+    // A starred line may have been written from another form of the word, so the line to
+    // toggle is looked up rather than rebuilt from the word under the cursor.
+    const silencing = kind === 'stem' ? this.stemLineSilencing(value) : null;
+    const line = silencing === null ? this.exclusionLine(kind, value) : `${silencing}*`;
+    const excluded = silencing !== null || (kind !== 'stem' && this.isExcluded(listKey, line));
+    const key = `exclude.${excluded ? 'remove' : 'add'}${LONG[kind]}`;
+    // Inside the group the parent already says "Exclude «word»" and the item only finishes
+    // it. Taking a word off a list finishes nothing, so an undo stays out of the group.
+    const write = (i, grouped) => i
+      .setTitle(grouped ? t(SHORT[kind]) : t(key, { value, noun }))
+      .setIcon(grouped ? null : (excluded ? 'rotate-ccw' : (kind === 'term' ? 'trash-2' : 'ban')))
+      .onClick(() => this.setExcluded(listKey, line, !excluded));
+    if (excluded) menu.addItem((i) => write(i, false));
+    else menu.tagged('exclude', { value }, write);
+  },
+
+  async setExcluded(listKey, value, add) {
     const v = value.toLowerCase();
-    const lines = splitLines(this.settings.excludeTerms);
+    const lines = splitLines(this.settings[listKey]);
     const has = lines.some((l) => l.toLowerCase() === v);
     if (add === has) { new Notice(t(add ? 'notice.alreadyExcluded' : 'notice.wasNotExcluded', { value })); return; }
-    this.settings.excludeTerms = (add ? [...lines, value] : lines.filter((l) => l.toLowerCase() !== v)).join('\n');
+    const stored = listKey === 'excludeWords' ? v : value;
+    this.settings[listKey] = (add ? [...lines, stored] : lines.filter((l) => l.toLowerCase() !== v)).join('\n');
     await this.saveSettings();
     this.rebuildIndex();
     this.rerenderViews();
     this.updateStatusBar();
-    new Notice(t(add ? 'notice.addedToExcluded' : 'notice.removedFromExcluded', { value, where: t('exclude.terms') }));
+    const where = t(listKey === 'excludeWords' ? 'exclude.words' : 'exclude.terms');
+    new Notice(t(add ? 'notice.addedToExcluded' : 'notice.removedFromExcluded', { value, where }));
   },
 
   // linkAs (optional) overrides which heading the occurrence links to — used when a

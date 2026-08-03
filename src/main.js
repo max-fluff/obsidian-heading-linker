@@ -44,6 +44,9 @@ function parseHeadingAliases(text, headings) {
   return new Map([...map].map(([k, v]) => [k, [...v]]));
 }
 
+// Same tokens the matcher counts, so "one word" means the same thing on both sides.
+const oneWord = (text) => (text.match(/[\p{L}\p{Nd}]+/gu) || []).length === 1;
+
 // Notice strings for setPathInList, per list and add/remove.
 const NOTICE_KEYS = {
   glossarySources: { add: 'notice.sourceAdded', remove: 'notice.sourceRemoved' },
@@ -68,6 +71,8 @@ class HeadingLinkerPlugin extends Plugin {
     this.activeLanguages = [];
     this.languageErrors = [];
     this.index = { byKey: new Map(), termCount: 0 };
+    this.excludedWords = new Set();
+    this.excludedStems = new Set();
     this.keysCache = new Map();
     this.terms = [];
     // path -> JSON(headings + aliases) as of the last rebuild, so the 'changed' handler can
@@ -143,9 +148,16 @@ class HeadingLinkerPlugin extends Plugin {
       const sourcePath = file ? file.path : '';
       const link = this.headingLinkAt(editor);
 
-      const excludeItem = (value) => {
+      // Three wishes on one word: stop this spelling, stop every form behind it, drop the
+      // heading it reached. Only a lone word can go on the word list — it is read word by word.
+      const excludeItem = (value, display) => {
         if (!this.settings.menuExclude) return;
-        this.addExclusionMenuItem(menu, this.labelOf(value));
+        const label = this.labelOf(value);
+        if (display && oneWord(display) && display.toLowerCase() !== label.toLowerCase()) {
+          this.addExclusionMenuItem(menu, 'excludeWords', display, 'form');
+          this.addExclusionMenuItem(menu, 'excludeWords', display, 'stem');
+        }
+        this.addExclusionMenuItem(menu, 'excludeTerms', label);
       };
 
       if (link) {
@@ -159,7 +171,7 @@ class HeadingLinkerPlugin extends Plugin {
           menu.addItem((i) => i.setTitle(t('menu.collectThisAlias')).setIcon('download')
             .onClick(() => this.collectAliasFromLink(link)));
         }
-        excludeItem(link.linktext);
+        excludeItem(link.linktext, link.display);
         return;
       }
 
@@ -170,12 +182,15 @@ class HeadingLinkerPlugin extends Plugin {
         // A word the sibling owns. We draw nothing on it, but we do match it, so the one
         // thing still worth offering is the setting that makes us stop.
         const word = this.wordAtCursor(editor);
-        if (word) { excludeItem(word.linktext); return; }
+        if (word) { excludeItem(word.linktext, word.display); return; }
         // Nothing matches — which is also what an already-excluded word looks like, since
         // exclusion takes it out of the index. Without this the item that put it there has
         // no counterpart and the reader cannot undo it from the menu at all.
         const raw = this.rawWordAtCursor(editor);
-        if (raw && this.isExcluded(raw)) excludeItem(raw);
+        if (!raw || !this.settings.menuExclude) return;
+        if (this.isExcluded('excludeWords', raw)) this.addExclusionMenuItem(menu, 'excludeWords', raw, 'form');
+        if (this.stemLineSilencing(raw)) this.addExclusionMenuItem(menu, 'excludeWords', raw, 'stem');
+        if (this.isExcluded('excludeTerms', raw)) this.addExclusionMenuItem(menu, 'excludeTerms', raw);
         return;
       }
       const display = hit.match.display;
@@ -204,7 +219,7 @@ class HeadingLinkerPlugin extends Plugin {
         menu.addItem((i) => i.setTitle(t('menu.openThisWord', { display })).setIcon('file-text')
           .onClick(() => this.chooseTerm(candidates(), t('menu.openTitle'), (c) => this.openTerm(c, sourcePath, false))));
       }
-      excludeItem(linktext);
+      excludeItem(linktext, display);
     })));
 
     this.registerEvent(this.app.workspace.on('file-menu', (menu, file, source) => {

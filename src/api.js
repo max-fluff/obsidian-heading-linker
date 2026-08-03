@@ -45,7 +45,7 @@ module.exports = {
         displayName: 'Heading Linker',
         spanOf: (m) => ({ start: m.start, end: m.end, label: m.label, target: m.linktext }),
         suggestionsFor,
-        excludes: (text) => plugin.isExcluded(text),
+        excludes: (text) => plugin.wordSilenced(text) || plugin.isExcluded('excludeTerms', text),
         // The raw target reads "Guide#Spawn"; the reader wants the heading and the note it
         // sits in, since two files holding the same heading are what makes a span ambiguous.
         describe: (target, display) => {
@@ -145,7 +145,7 @@ module.exports = {
     if (!this.candidateCache) this.candidateCache = createUsageCache();
     // minLen changes what a note contributes, so it joins the index version in the key.
     const signature = `${this.indexVersion || 0}|${minLen}`;
-    const isTermWord = (keys) => keys.some((k) => this.index.byKey.has(k));
+    const isTermWord = (keys, raw) => keys.some((k) => this.index.byKey.has(k)) || this.wordSilenced(raw);
     const results = await this.candidateCache.run(files, signature, (file) => scanCandidateWords(this, file, minLen, isTermWord));
     return aggregateCandidates(results, minNotes);
   },

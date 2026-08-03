@@ -38,6 +38,8 @@ var require_constants = __commonJS({
       // ids in priority order (first = highest); overrides module defaults
       excludeTerms: "",
       // heading texts to drop from the index entirely
+      excludeWords: "",
+      // written words that never become a link, whatever heading they match
       linkFirstOnly: false,
       // Who wins a word both linkers match. Read by the other side through the api, so both
       // reach the same verdict; a heading anchor is narrower than a whole note, hence higher.
@@ -1744,8 +1746,10 @@ var require_prose = __commonJS({
       // The shared submenu the exclusion items collect into, and their wording inside it, where
       // the parent already names the word.
       "exclude.group": "Exclude \u201C{value}\u201D",
-      "exclude.addShort": "Add to {noun}",
-      "exclude.removeShort": "Remove from {noun}",
+      // Inside the group the parent already says "Exclude …", so an item names its reach and
+      // leaves the state to its tick — "Exclude ▸ Add" read as two verbs fighting.
+      "exclude.shortForm": "This spelling",
+      "exclude.shortStem": "Every form",
       "label.selection": "Selection",
       "modal.leftAsText": "(left as text)",
       "modal.skipOption": "skip",
@@ -1809,8 +1813,8 @@ var require_prose = __commonJS({
       "set.suggestPlainText.desc": "\u041F\u043E\u0434\u0441\u043A\u0430\u0437\u043A\u0430 \u0434\u043E\u043F\u0438\u0441\u044B\u0432\u0430\u0435\u0442 \u0441\u043B\u043E\u0432\u043E, \u043D\u0435 \u043F\u0440\u0435\u0432\u0440\u0430\u0449\u0430\u044F \u0435\u0433\u043E \u0432 \u0441\u0441\u044B\u043B\u043A\u0443.",
       "set.heading.contextMenu": "\u041A\u043E\u043D\u0442\u0435\u043A\u0441\u0442\u043D\u043E\u0435 \u043C\u0435\u043D\u044E",
       "exclude.group": "\u0418\u0441\u043A\u043B\u044E\u0447\u0438\u0442\u044C \xAB{value}\xBB",
-      "exclude.addShort": "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0432 {noun}",
-      "exclude.removeShort": "\u0423\u0431\u0440\u0430\u0442\u044C \u0438\u0437 {noun}",
+      "exclude.shortForm": "\u042D\u0442\u043E \u043D\u0430\u043F\u0438\u0441\u0430\u043D\u0438\u0435",
+      "exclude.shortStem": "\u0412\u0441\u0435 \u0444\u043E\u0440\u043C\u044B",
       "label.selection": "\u0412\u044B\u0434\u0435\u043B\u0435\u043D\u0438\u0435",
       "modal.leftAsText": "(\u043E\u0441\u0442\u0430\u0432\u043B\u0435\u043D\u043E \u0442\u0435\u043A\u0441\u0442\u043E\u043C)",
       "modal.skipOption": "\u043F\u0440\u043E\u043F\u0443\u0441\u0442\u0438\u0442\u044C",
@@ -2908,6 +2912,13 @@ var require_settings_tab = __commonJS({
         sections.matchMode(containerEl);
         sections.languages(containerEl);
         sections.matchLimits(containerEl);
+        new Setting(containerEl).setName(t2("set.excludeWords.name")).setDesc(t2("set.excludeWords.desc")).addTextArea((c) => {
+          c.setValue(s.excludeWords).onChange(async (v) => {
+            s.excludeWords = v;
+            await save(true);
+          });
+          c.inputEl.rows = 3;
+        });
         sections.highlighting(containerEl);
         sections.autocomplete(containerEl);
         sections.menuToggles(containerEl, ["menuTurnInto", "menuOpen", "menuExclude", "menuUnlink", "menuCollect"]);
@@ -3219,7 +3230,8 @@ var require_matcher2 = __commonJS({
     var core = createMatcher({
       idOf: (c) => c.linktext,
       selfIdOf: (c) => c.fileBase,
-      fieldsOf: (c) => ({ linktext: c.linktext, label: c.label })
+      fieldsOf: (c) => ({ linktext: c.linktext, label: c.label }),
+      accepts: (plugin, matched, token) => !(matched.wc === 1 && plugin.wordSilenced(token.raw))
     });
     module2.exports = Object.assign({}, core, {
       rebuildIndex() {
@@ -3231,6 +3243,16 @@ var require_matcher2 = __commonJS({
         const minTermLength = Math.max(1, this.settings.minTermLength || 1);
         const excludeTerms = new Set(splitLines2(this.settings.excludeTerms).map((s) => s.toLowerCase()));
         const levels = new Set(this.settings.headingLevels || [1, 2, 3, 4, 5, 6]);
+        this.excludedWords = /* @__PURE__ */ new Set();
+        this.excludedStems = /* @__PURE__ */ new Set();
+        for (const line of splitLines2(this.settings.excludeWords)) {
+          if (!line.endsWith("*")) {
+            this.excludedWords.add(line.toLowerCase());
+            continue;
+          }
+          for (const k of this.keysFor(line.slice(0, -1)))
+            this.excludedStems.add(k);
+        }
         this.headingFingerprints = /* @__PURE__ */ new Map();
         for (const file of this.glossaryFilesList()) {
           const headings = this.headingsOf(file);
@@ -3285,6 +3307,13 @@ var require_matcher2 = __commonJS({
         this.duplicateHeadings = duplicates;
         this.indexVersion = (this.indexVersion || 0) + 1;
         this.notifyIndexChange();
+      },
+      // Whether the excluded-words list silences this written word — by its own spelling, or
+      // through a starred line standing for a stem and every form that reduces to it.
+      wordSilenced(word) {
+        if (this.excludedWords.has(word.toLowerCase()))
+          return true;
+        return this.excludedStems.size > 0 && this.keysFor(word).some((k) => this.excludedStems.has(k));
       },
       // Base (dictionary) form of a word: the first claiming language that has one wins, else
       // the lowercased word. Same rule the glossary linker uses to collapse inflected forms.
@@ -4081,6 +4110,8 @@ var require_materialize = __commonJS({
     var { MaterializePreviewModal, UnlinkPreviewModal, ChooseTermModal } = require_modals2();
     var { candidatesFor } = require_discover();
     var { t: t2, plural: plural2 } = require_i18n();
+    var LONG = { term: "", form: "Form", stem: "Stem" };
+    var SHORT = { term: "exclude.shortTerm", form: "exclude.shortForm", stem: "exclude.shortStem" };
     module2.exports = {
       collectMatches(text, currentFile) {
         const matches = this.findMatches(text, currentFile, { protect: true });
@@ -4320,32 +4351,60 @@ var require_materialize = __commonJS({
         }
         new ChooseTermModal(this.app, { title, terms: list, onChoose: action, display, plugin: this }).open();
       },
-      isExcluded(value) {
+      isExcluded(listKey, value) {
         const v = value.toLowerCase();
-        return splitLines2(this.settings.excludeTerms).some((l) => l.toLowerCase() === v);
+        return splitLines2(this.settings[listKey]).some((l) => l.toLowerCase() === v);
       },
-      // Toggle `value` (a heading text) in the excluded-headings list. Tagged with the verb, so
-      // the builder collects it with whatever else offers to exclude the same word.
-      addExclusionMenuItem(menu, value) {
-        const noun = t2("exclude.terms");
-        const excluded = this.isExcluded(value);
-        const key = excluded ? "exclude.remove" : "exclude.add";
-        menu.tagged("exclude", { value }, (i, grouped) => i.setTitle(t2(grouped ? key + "Short" : key, { value, noun })).setIcon(excluded ? "rotate-ccw" : "trash-2").onClick(() => this.setExcluded(value, !excluded)));
+      // A starred line carries the word's base form under the current match mode — a stem, a
+      // stripped ending or the whole word — and stands for every form that reduces to it.
+      exclusionLine(kind, value) {
+        return kind === "stem" ? `${this.keysFor(value)[0]}*` : value;
       },
-      async setExcluded(value, add) {
+      // The base of the starred line that silences this word, or null. Searched rather than
+      // built: the line may have been written from a different form of the same word.
+      stemLineSilencing(word) {
+        const keys = this.keysFor(word);
+        for (const line of splitLines2(this.settings.excludeWords)) {
+          if (!line.endsWith("*"))
+            continue;
+          const base = line.slice(0, -1);
+          if (this.keysFor(base).some((k) => keys.includes(k)))
+            return base;
+        }
+        return null;
+      },
+      // Toggle a line in one of the two exclusion lists. `kind` is the wish behind the item — a
+      // heading ('term'), this spelling ('form') or every form behind it ('stem') — and picks the
+      // wording. Tagged with the verb, so the builder collects it with whatever else offers to
+      // exclude the same word.
+      addExclusionMenuItem(menu, listKey, value, kind = "term") {
+        const noun = t2(kind === "term" ? "exclude.terms" : "exclude.words");
+        const silencing = kind === "stem" ? this.stemLineSilencing(value) : null;
+        const line = silencing === null ? this.exclusionLine(kind, value) : `${silencing}*`;
+        const excluded = silencing !== null || kind !== "stem" && this.isExcluded(listKey, line);
+        const key = `exclude.${excluded ? "remove" : "add"}${LONG[kind]}`;
+        const write = (i, grouped) => i.setTitle(grouped ? t2(SHORT[kind]) : t2(key, { value, noun })).setIcon(grouped ? null : excluded ? "rotate-ccw" : kind === "term" ? "trash-2" : "ban").onClick(() => this.setExcluded(listKey, line, !excluded));
+        if (excluded)
+          menu.addItem((i) => write(i, false));
+        else
+          menu.tagged("exclude", { value }, write);
+      },
+      async setExcluded(listKey, value, add) {
         const v = value.toLowerCase();
-        const lines = splitLines2(this.settings.excludeTerms);
+        const lines = splitLines2(this.settings[listKey]);
         const has = lines.some((l) => l.toLowerCase() === v);
         if (add === has) {
           new Notice2(t2(add ? "notice.alreadyExcluded" : "notice.wasNotExcluded", { value }));
           return;
         }
-        this.settings.excludeTerms = (add ? [...lines, value] : lines.filter((l) => l.toLowerCase() !== v)).join("\n");
+        const stored = listKey === "excludeWords" ? v : value;
+        this.settings[listKey] = (add ? [...lines, stored] : lines.filter((l) => l.toLowerCase() !== v)).join("\n");
         await this.saveSettings();
         this.rebuildIndex();
         this.rerenderViews();
         this.updateStatusBar();
-        new Notice2(t2(add ? "notice.addedToExcluded" : "notice.removedFromExcluded", { value, where: t2("exclude.terms") }));
+        const where = t2(listKey === "excludeWords" ? "exclude.words" : "exclude.terms");
+        new Notice2(t2(add ? "notice.addedToExcluded" : "notice.removedFromExcluded", { value, where }));
       },
       // linkAs (optional) overrides which heading the occurrence links to — used when a
       // word matches several headings and the user picks an alternative from the menu.
@@ -4537,7 +4596,7 @@ var require_usage = __commonJS({
           continue;
         if (plugin.overlapsProtected(protect, m.index, m.index + raw.length))
           continue;
-        if (isTermWord(plugin.keysFor(raw)))
+        if (isTermWord(plugin.keysFor(raw), raw))
           continue;
         const lemma = plugin.lemmaFor(raw);
         if (lemma.length < minLen)
@@ -4812,7 +4871,7 @@ var require_api = __commonJS({
             displayName: "Heading Linker",
             spanOf: (m) => ({ start: m.start, end: m.end, label: m.label, target: m.linktext }),
             suggestionsFor,
-            excludes: (text) => plugin.isExcluded(text),
+            excludes: (text) => plugin.wordSilenced(text) || plugin.isExcluded("excludeTerms", text),
             // The raw target reads "Guide#Spawn"; the reader wants the heading and the note it
             // sits in, since two files holding the same heading are what makes a span ambiguous.
             describe: (target, display) => {
@@ -4910,7 +4969,7 @@ var require_api = __commonJS({
         if (!this.candidateCache)
           this.candidateCache = createUsageCache();
         const signature = `${this.indexVersion || 0}|${minLen}`;
-        const isTermWord = (keys) => keys.some((k) => this.index.byKey.has(k));
+        const isTermWord = (keys, raw) => keys.some((k) => this.index.byKey.has(k)) || this.wordSilenced(raw);
         const results = await this.candidateCache.run(files, signature, (file) => scanCandidateWords(this, file, minLen, isTermWord));
         return aggregateCandidates(results, minNotes);
       }
@@ -5043,6 +5102,7 @@ var require_menu_verbs = __commonJS({
       open: { label: "menu.open.group", icon: "file-search" },
       exclude: { label: "exclude.group", icon: "ban" }
     };
+    var verbKey = (verb, value) => verb + " " + (value == null ? "" : String(value));
     var MenuBuilder = class {
       constructor(plugin, menu) {
         this.plugin = plugin;
@@ -5084,23 +5144,25 @@ var require_menu_verbs = __commonJS({
         };
         return child;
       }
-      // Verb -> the object it acts on, for those that earned a submenu. All items of one verb in
-      // one menu act on the same object, so the first one's value names the group.
+      // Which (verb, object) pairs earned a submenu. Counted per object, not per verb: a group
+      // is named after the object it acts on, so items reaching for different ones — excluding
+      // this spelling, dropping that heading — stay apart and keep their full wording.
       groupedVerbs() {
         const counts = /* @__PURE__ */ new Map();
         for (const e of this.entries) {
           if (!e.verb)
             continue;
-          const seen = counts.get(e.verb) || { count: 0, value: e.value };
+          const key = verbKey(e.verb, e.value);
+          const seen = counts.get(key) || { count: 0, verb: e.verb, value: e.value };
           seen.count++;
-          counts.set(e.verb, seen);
+          counts.set(key, seen);
         }
         const provider = this.plugin.api && this.plugin.api.linker;
-        const grouped = /* @__PURE__ */ new Map();
-        for (const [verb, { count, value }] of counts) {
+        const grouped = /* @__PURE__ */ new Set();
+        for (const [key, { count, verb, value }] of counts) {
           const peers = provider ? peersOffering(this.plugin.app, provider, verb, value).length : 0;
           if (count + peers > 1)
-            grouped.set(verb, value);
+            grouped.add(key);
         }
         return grouped;
       }
@@ -5117,10 +5179,12 @@ var require_menu_verbs = __commonJS({
             sub.addItem((item) => child.cb(item, true));
         }
       }
+      // The key carries the object too, so two plugins excluding the same word still land in one
+      // submenu while two acting on different ones do not.
       sectionFor(verb, value) {
         const spec = VERBS[verb];
         const label = t2(spec.label, value == null ? void 0 : { value });
-        return sharedSection(this.menu, "linker:" + verb, label, spec.icon);
+        return sharedSection(this.menu, "linker:" + verbKey(verb, value), label, spec.icon);
       }
       // Replayed in declaration order, so a verb's submenu appears where its first item would
       // have. Anything else keeps its place.
@@ -5136,13 +5200,14 @@ var require_menu_verbs = __commonJS({
             this.writeSection(e);
             continue;
           }
-          if (!e.verb || !grouped.has(e.verb)) {
+          const key = e.verb ? verbKey(e.verb, e.value) : null;
+          if (!key || !grouped.has(key)) {
             this.menu.addItem((item) => e.cb(item, false));
             continue;
           }
-          if (!sections.has(e.verb))
-            sections.set(e.verb, this.sectionFor(e.verb, grouped.get(e.verb)));
-          sections.get(e.verb).addItem((item) => e.cb(item, true));
+          if (!sections.has(key))
+            sections.set(key, this.sectionFor(e.verb, e.value));
+          sections.get(key).addItem((item) => e.cb(item, true));
         }
       }
     };
@@ -5782,8 +5847,14 @@ var require_en2 = __commonJS({
       "menu.openNewTabTitle": "Open which heading in a new tab?",
       // Exclusion menu
       "exclude.terms": "excluded headings",
+      "exclude.words": "excluded words",
       "exclude.add": 'Add "{value}" to {noun}',
       "exclude.remove": 'Remove "{value}" from {noun}',
+      "exclude.addForm": 'Add "{value}" to {noun}',
+      "exclude.removeForm": 'Remove "{value}" from {noun}',
+      "exclude.addStem": 'Add every form of "{value}" to {noun}',
+      "exclude.removeStem": 'Remove every form of "{value}" from {noun}',
+      "exclude.shortTerm": "This heading",
       // Modals
       "modal.materialize.title": "Turn words into heading links",
       "modal.materialize.ambiguous": "{n} word(s) match more than one heading \u2014 pick one or skip:",
@@ -5862,6 +5933,8 @@ var require_en2 = __commonJS({
       "set.linkFirstOnly.desc": "Link only the first mention of each heading per note.",
       "set.excludeTerms.name": "Excluded headings",
       "set.excludeTerms.desc": "Heading texts to drop from the index entirely, one per line. Their word forms stop linking too.",
+      "set.excludeWords.name": "Excluded words",
+      "set.excludeWords.desc": "Written words, one per line, that never become a link even when they match a heading. A line stops that spelling alone; end it with * to stop every form of the word. The heading itself keeps linking either way.",
       // Settings — highlighting
       "set.highlightInReading.desc": "Underline matched words in rendered notes.",
       "set.editingHighlight.desc": "Underline matched words while editing.",
@@ -5952,8 +6025,14 @@ var require_ru2 = __commonJS({
       "menu.openTitle": "\u041A\u0430\u043A\u043E\u0439 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A \u043E\u0442\u043A\u0440\u044B\u0442\u044C?",
       "menu.openNewTabTitle": "\u041A\u0430\u043A\u043E\u0439 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A \u043E\u0442\u043A\u0440\u044B\u0442\u044C \u0432 \u043D\u043E\u0432\u043E\u0439 \u0432\u043A\u043B\u0430\u0434\u043A\u0435?",
       "exclude.terms": "\u0438\u0441\u043A\u043B\u044E\u0447\u0451\u043D\u043D\u044B\u0435 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438",
+      "exclude.words": "\u0438\u0441\u043A\u043B\u044E\u0447\u0451\u043D\u043D\u044B\u0435 \u0441\u043B\u043E\u0432\u0430",
       "exclude.add": "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \xAB{value}\xBB \u0432 {noun}",
       "exclude.remove": "\u0423\u0431\u0440\u0430\u0442\u044C \xAB{value}\xBB \u0438\u0437 {noun}",
+      "exclude.addForm": "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \xAB{value}\xBB \u0432 {noun}",
+      "exclude.removeForm": "\u0423\u0431\u0440\u0430\u0442\u044C \xAB{value}\xBB \u0438\u0437 {noun}",
+      "exclude.addStem": "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0432\u0441\u0435 \u0444\u043E\u0440\u043C\u044B \xAB{value}\xBB \u0432 {noun}",
+      "exclude.removeStem": "\u0423\u0431\u0440\u0430\u0442\u044C \u0432\u0441\u0435 \u0444\u043E\u0440\u043C\u044B \xAB{value}\xBB \u0438\u0437 {noun}",
+      "exclude.shortTerm": "\u042D\u0442\u043E\u0442 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A",
       "modal.materialize.title": "\u041F\u0440\u0435\u0432\u0440\u0430\u0442\u0438\u0442\u044C \u0441\u043B\u043E\u0432\u0430 \u0432 \u0441\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438",
       "modal.materialize.ambiguous": "{n} \u0441\u043B\u043E\u0432(\u043E) \u0441\u043E\u0432\u043F\u0430\u0434\u0430\u0435\u0442 \u0441 \u043D\u0435\u0441\u043A\u043E\u043B\u044C\u043A\u0438\u043C\u0438 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0430\u043C\u0438 \u2014 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0438\u043B\u0438 \u043F\u0440\u043E\u043F\u0443\u0441\u0442\u0438\u0442\u0435:",
       "modal.unlink.title": "\u0423\u0431\u0440\u0430\u0442\u044C \u0441\u0441\u044B\u043B\u043A\u0438 \u043D\u0430 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438",
@@ -6021,6 +6100,8 @@ var require_ru2 = __commonJS({
       "set.linkFirstOnly.desc": "\u0421\u0432\u044F\u0437\u044B\u0432\u0430\u0442\u044C \u0442\u043E\u043B\u044C\u043A\u043E \u043F\u0435\u0440\u0432\u043E\u0435 \u0443\u043F\u043E\u043C\u0438\u043D\u0430\u043D\u0438\u0435 \u043A\u0430\u0436\u0434\u043E\u0433\u043E \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0430 \u0432 \u0437\u0430\u043C\u0435\u0442\u043A\u0435.",
       "set.excludeTerms.name": "\u0418\u0441\u043A\u043B\u044E\u0447\u0451\u043D\u043D\u044B\u0435 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438",
       "set.excludeTerms.desc": "\u0422\u0435\u043A\u0441\u0442\u044B \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u0432, \u043F\u043E\u043B\u043D\u043E\u0441\u0442\u044C\u044E \u0443\u0431\u0438\u0440\u0430\u0435\u043C\u044B\u0435 \u0438\u0437 \u0438\u043D\u0434\u0435\u043A\u0441\u0430, \u043F\u043E \u043E\u0434\u043D\u043E\u043C\u0443 \u0432 \u0441\u0442\u0440\u043E\u043A\u0435. \u0418\u0445 \u0441\u043B\u043E\u0432\u043E\u0444\u043E\u0440\u043C\u044B \u0442\u043E\u0436\u0435 \u043F\u0435\u0440\u0435\u0441\u0442\u0430\u044E\u0442 \u0441\u0432\u044F\u0437\u044B\u0432\u0430\u0442\u044C\u0441\u044F.",
+      "set.excludeWords.name": "\u0418\u0441\u043A\u043B\u044E\u0447\u0451\u043D\u043D\u044B\u0435 \u0441\u043B\u043E\u0432\u0430",
+      "set.excludeWords.desc": "\u041D\u0430\u043F\u0438\u0441\u0430\u043D\u0438\u044F, \u043F\u043E \u043E\u0434\u043D\u043E\u043C\u0443 \u0432 \u0441\u0442\u0440\u043E\u043A\u0435, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u043D\u0438\u043A\u043E\u0433\u0434\u0430 \u043D\u0435 \u0441\u0442\u0430\u043D\u043E\u0432\u044F\u0442\u0441\u044F \u0441\u0441\u044B\u043B\u043A\u043E\u0439, \u0434\u0430\u0436\u0435 \u0435\u0441\u043B\u0438 \u0441\u043E\u0432\u043F\u0430\u0434\u0430\u044E\u0442 \u0441 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u043C. \u0421\u0442\u0440\u043E\u043A\u0430 \u043E\u0441\u0442\u0430\u043D\u0430\u0432\u043B\u0438\u0432\u0430\u0435\u0442 \u0442\u043E\u043B\u044C\u043A\u043E \u044D\u0442\u043E \u043D\u0430\u043F\u0438\u0441\u0430\u043D\u0438\u0435; \u0441\u043E \u0437\u0432\u0451\u0437\u0434\u043E\u0447\u043A\u043E\u0439 \u043D\u0430 \u043A\u043E\u043D\u0446\u0435 \u2014 \u0432\u0441\u0435 \u0444\u043E\u0440\u043C\u044B \u0441\u043B\u043E\u0432\u0430. \u0421\u0430\u043C \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A \u0432 \u043E\u0431\u043E\u0438\u0445 \u0441\u043B\u0443\u0447\u0430\u044F\u0445 \u043F\u0440\u043E\u0434\u043E\u043B\u0436\u0430\u0435\u0442 \u0441\u0432\u044F\u0437\u044B\u0432\u0430\u0442\u044C\u0441\u044F.",
       "set.highlightInReading.desc": "\u041F\u043E\u0434\u0447\u0451\u0440\u043A\u0438\u0432\u0430\u0442\u044C \u0441\u043E\u0432\u043F\u0430\u0432\u0448\u0438\u0435 \u0441\u043B\u043E\u0432\u0430 \u0432 \u043E\u0442\u0440\u0438\u0441\u043E\u0432\u0430\u043D\u043D\u044B\u0445 \u0437\u0430\u043C\u0435\u0442\u043A\u0430\u0445.",
       "set.editingHighlight.desc": "\u041F\u043E\u0434\u0447\u0451\u0440\u043A\u0438\u0432\u0430\u0442\u044C \u0441\u043E\u0432\u043F\u0430\u0432\u0448\u0438\u0435 \u0441\u043B\u043E\u0432\u0430 \u043F\u0440\u0438 \u0440\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0438.",
       "set.editingHighlight.off": "\u0412\u044B\u043A\u043B",
@@ -6094,6 +6175,7 @@ function parseHeadingAliases(text, headings) {
   }
   return new Map([...map].map(([k, v]) => [k, [...v]]));
 }
+var oneWord = (text) => (text.match(/[\p{L}\p{Nd}]+/gu) || []).length === 1;
 var NOTICE_KEYS = {
   glossarySources: { add: "notice.sourceAdded", remove: "notice.sourceRemoved" },
   excludeSources: { add: "notice.ignoreAdded", remove: "notice.ignoreRemoved" },
@@ -6112,6 +6194,8 @@ var HeadingLinkerPlugin = class extends Plugin {
     this.activeLanguages = [];
     this.languageErrors = [];
     this.index = { byKey: /* @__PURE__ */ new Map(), termCount: 0 };
+    this.excludedWords = /* @__PURE__ */ new Set();
+    this.excludedStems = /* @__PURE__ */ new Set();
     this.keysCache = /* @__PURE__ */ new Map();
     this.terms = [];
     this.headingFingerprints = /* @__PURE__ */ new Map();
@@ -6178,10 +6262,15 @@ var HeadingLinkerPlugin = class extends Plugin {
       const file = this.app.workspace.getActiveFile();
       const sourcePath = file ? file.path : "";
       const link = this.headingLinkAt(editor);
-      const excludeItem = (value) => {
+      const excludeItem = (value, display2) => {
         if (!this.settings.menuExclude)
           return;
-        this.addExclusionMenuItem(menu, this.labelOf(value));
+        const label = this.labelOf(value);
+        if (display2 && oneWord(display2) && display2.toLowerCase() !== label.toLowerCase()) {
+          this.addExclusionMenuItem(menu, "excludeWords", display2, "form");
+          this.addExclusionMenuItem(menu, "excludeWords", display2, "stem");
+        }
+        this.addExclusionMenuItem(menu, "excludeTerms", label);
       };
       if (link) {
         if (this.settings.menuUnlink) {
@@ -6190,19 +6279,25 @@ var HeadingLinkerPlugin = class extends Plugin {
         if (this.settings.menuCollect && link.targetFile && link.display !== this.labelOf(link.linktext)) {
           menu.addItem((i) => i.setTitle(t("menu.collectThisAlias")).setIcon("download").onClick(() => this.collectAliasFromLink(link)));
         }
-        excludeItem(link.linktext);
+        excludeItem(link.linktext, link.display);
         return;
       }
       const hit = this.matchAtCursor(editor);
       if (!hit) {
         const word = this.wordAtCursor(editor);
         if (word) {
-          excludeItem(word.linktext);
+          excludeItem(word.linktext, word.display);
           return;
         }
         const raw = this.rawWordAtCursor(editor);
-        if (raw && this.isExcluded(raw))
-          excludeItem(raw);
+        if (!raw || !this.settings.menuExclude)
+          return;
+        if (this.isExcluded("excludeWords", raw))
+          this.addExclusionMenuItem(menu, "excludeWords", raw, "form");
+        if (this.stemLineSilencing(raw))
+          this.addExclusionMenuItem(menu, "excludeWords", raw, "stem");
+        if (this.isExcluded("excludeTerms", raw))
+          this.addExclusionMenuItem(menu, "excludeTerms", raw);
         return;
       }
       const display = hit.match.display;
@@ -6231,7 +6326,7 @@ var HeadingLinkerPlugin = class extends Plugin {
       if (this.settings.menuOpen) {
         menu.addItem((i) => i.setTitle(t("menu.openThisWord", { display })).setIcon("file-text").onClick(() => this.chooseTerm(candidates(), t("menu.openTitle"), (c) => this.openTerm(c, sourcePath, false))));
       }
-      excludeItem(linktext);
+      excludeItem(linktext, display);
     })));
     this.registerEvent(this.app.workspace.on("file-menu", (menu, file, source) => {
       if (source === "link-context-menu")
