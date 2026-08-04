@@ -6,9 +6,6 @@ const { MaterializePreviewModal, UnlinkPreviewModal, ChooseTermModal } = require
 const { candidatesFor } = require('./shared/discover');
 const { t, plural } = require('./shared/i18n');
 
-const LONG = { term: '', form: 'Form', stem: 'Stem' };
-const SHORT = { term: 'exclude.shortTerm', form: 'exclude.shortForm', stem: 'exclude.shortStem' };
-
 // Turning words into heading links and reverting them. Mixed into the plugin prototype.
 module.exports = {
   collectMatches(text, currentFile) {
@@ -244,27 +241,6 @@ module.exports = {
       if (this.keysFor(base).some((k) => keys.includes(k))) return base;
     }
     return null;
-  },
-
-  // Toggle a line in one of the two exclusion lists. `kind` is the wish behind the item — a
-  // heading ('term'), this spelling ('form') or every form behind it ('stem') — and picks
-  // both the wording and which verb the item is filed under.
-  addExclusionMenuItem(menu, listKey, value, kind = 'term') {
-    const noun = t(kind === 'term' ? 'exclude.terms' : 'exclude.words');
-    // A starred line may have been written from another form of the word, so the line to
-    // toggle is looked up rather than rebuilt from the word under the cursor.
-    const silencing = kind === 'stem' ? this.stemLineSilencing(value) : null;
-    const line = silencing === null ? this.exclusionLine(kind, value) : `${silencing}*`;
-    const excluded = silencing !== null || (kind !== 'stem' && this.isExcluded(listKey, line));
-    const key = `exclude.${excluded ? 'remove' : 'add'}${LONG[kind]}`;
-    // Inside the group the parent already says "Exclude «word»" and the item only finishes
-    // it. Taking a word off a list finishes nothing, so an undo stays out of the group.
-    const write = (i, grouped) => i
-      .setTitle(t(grouped ? SHORT[kind] : key, { value, noun }))
-      .setIcon(grouped ? null : (excluded ? 'rotate-ccw' : (kind === 'term' ? 'trash-2' : 'ban')))
-      .onClick(() => this.setExcluded(listKey, line, !excluded));
-    if (excluded) menu.addItem((i) => write(i, false));
-    else menu.tagged(kind === 'term' ? 'exclude' : 'silence', { value }, write);
   },
 
   async setExcluded(listKey, value, add) {

@@ -14,6 +14,9 @@ const indexEvents = require('./shared/index-events');
 const { HeadingSuggest, suggestAvailable } = require('./heading-suggest');
 const { initI18n, withFamily, t, plural } = require('./shared/i18n');
 const { buildMenu } = require('./shared/menu-verbs');
+const { registerActions, menuActions } = require('./shared/actions');
+const { PATH_ACTIONS } = require('./path-actions');
+const { EDITOR_ACTIONS } = require('./editor-actions');
 const aliases = require('./aliases');
 const rename = require('./rename');
 const { ChoicePopover } = require('./shared/prose/choices');
@@ -43,9 +46,6 @@ function parseHeadingAliases(text, headings) {
   }
   return new Map([...map].map(([k, v]) => [k, [...v]]));
 }
-
-// Same tokens the matcher counts, so "one word" means the same thing on both sides.
-const oneWord = (text) => (text.match(/[\p{L}\p{Nd}]+/gu) || []).length === 1;
 
 // Notice strings for setPathInList, per list and add/remove.
 const NOTICE_KEYS = {
@@ -143,114 +143,17 @@ class HeadingLinkerPlugin extends Plugin {
     // action does rather than by which plugin answers for it — see shared/menu-verbs.js.
     // Nothing here can collide with a sibling: a link is recognised by exactly one linker,
     // and on a word several match, only the owner finds a match at the cursor.
-    this.registerEvent(this.app.workspace.on('editor-menu', (nativeMenu, editor) => buildMenu(this, nativeMenu, (menu) => {
-      const file = this.app.workspace.getActiveFile();
-      const sourcePath = file ? file.path : '';
-      const link = this.headingLinkAt(editor);
-
-      // Three wishes on one word: stop this spelling, stop every form behind it, drop the
-      // heading it reached. Offered even where the word is the heading's own wording — the
-      // heading then keeps its place in the index and its autocomplete, and only stops
-      // catching that word in prose. Only a lone word can go on the word list, which is read
-      // a word at a time.
-      const excludeItem = (value, display) => {
-        if (!this.settings.menuExclude) return;
-        if (display && oneWord(display)) {
-          this.addExclusionMenuItem(menu, 'excludeWords', display, 'form');
-          this.addExclusionMenuItem(menu, 'excludeWords', display, 'stem');
-        }
-        this.addExclusionMenuItem(menu, 'excludeTerms', this.labelOf(value));
-      };
-
-      if (link) {
-        if (this.settings.menuUnlink) {
-          menu.addItem((i) => i.setTitle(t('menu.unlinkThisLink')).setIcon('unlink')
-            .onClick(() => this.unlinkLinkAt(editor, link)));
-        }
-        // The link's own wording is someone saying what this heading is called; collecting
-        // it makes the next occurrence of the phrase match on its own.
-        if (this.settings.menuCollect && link.targetFile && link.display !== this.labelOf(link.linktext)) {
-          menu.addItem((i) => i.setTitle(t('menu.collectThisAlias')).setIcon('download')
-            .onClick(() => this.collectAliasFromLink(link)));
-        }
-        excludeItem(link.linktext, link.display);
-        return;
-      }
-
-      // A highlighted word that isn't a link yet: the other half of the same toggle, so it
-      // sits in the same menu rather than in one of our own.
-      const hit = this.matchAtCursor(editor);
-      if (!hit) {
-        // A word the sibling owns. We draw nothing on it, but we do match it, so the one
-        // thing still worth offering is the setting that makes us stop.
-        const word = this.wordAtCursor(editor);
-        if (word) { excludeItem(word.linktext, word.display); return; }
-        // Nothing matches — which is also what an already-excluded word looks like, since
-        // exclusion takes it out of the index. Without this the item that put it there has
-        // no counterpart and the reader cannot undo it from the menu at all.
-        const raw = this.rawWordAtCursor(editor);
-        if (!raw || !this.settings.menuExclude) return;
-        if (this.isExcluded('excludeWords', raw)) this.addExclusionMenuItem(menu, 'excludeWords', raw, 'form');
-        if (this.stemLineSilencing(raw)) this.addExclusionMenuItem(menu, 'excludeWords', raw, 'stem');
-        if (this.isExcluded('excludeTerms', raw)) this.addExclusionMenuItem(menu, 'excludeTerms', raw);
-        return;
-      }
-      const display = hit.match.display;
-      const linktext = hit.match.linktext;
-      const candidates = () => this.cursorCandidates(hit, sourcePath, false);
-      // Only our own readings: a link is written by the linker that owns it, so a peer's
-      // meaning here could only open its note, never link the word. The peer has its own item.
-      const ownCandidates = () => [hit.match.linktext, ...(hit.match.alts || [])];
-
-      if (file && this.settings.menuTurnInto) {
-        // Three ways to link the same word differ only in how far they reach, so they are
-        // one entry with a choice inside rather than three lines competing for attention.
-        const scope = this.settings.linkFirstOnly ? t('scope.first') : t('scope.all');
-        const linkGroup = menu.section(t('menu.linkThisWord', { display }), 'link');
-        linkGroup.addItem((i) => i.setTitle(t('menu.linkHere', { display })).setIcon('link')
-          .onClick(() => this.chooseTerm(ownCandidates(), t('menu.linkDisplayTo', { display }),
-            (c) => this.materializeSingle(file, linktext, display, editor.posToOffset({ line: hit.line, ch: hit.match.start }), 0, c))));
-        linkGroup.addItem((i) => i.setTitle(t('menu.linkScopeThisNote', { scope, display })).setIcon('links-coming-in')
-          .onClick(() => this.chooseTerm(ownCandidates(), t('menu.linkScopeTo', { scope, display }),
-            (c) => this.materializeTerm(file, linktext, c))));
-        linkGroup.addItem((i) => i.setTitle(t('menu.linkScopeAllNotes', { scope, display })).setIcon('links-going-out')
-          .onClick(() => this.chooseTerm(ownCandidates(), t('menu.linkScopeTo', { scope, display }),
-            (c) => this.materializeTermScope(linktext, c))));
-      }
-      if (this.settings.menuOpen) {
-        menu.addItem((i) => i.setTitle(t('menu.openThisWord', { display })).setIcon('file-text')
-          .onClick(() => this.chooseTerm(candidates(), t('menu.openTitle'), (c) => this.openTerm(c, sourcePath, false))));
-      }
-      excludeItem(linktext, display);
-    })));
+    this.registerEvent(this.app.workspace.on('editor-menu', (nativeMenu, editor) =>
+      buildMenu(this, nativeMenu, (menu) => menuActions(this, menu, EDITOR_ACTIONS, 'editor', editor))));
 
     this.registerEvent(this.app.workspace.on('file-menu', (menu, file, source) => {
       if (source === 'link-context-menu') return;
       const isFolder = file instanceof TFolder;
       if (!isFolder && !(file instanceof TFile && file.extension === 'md')) return;
-      const path = file.path;
-      const noun = isFolder ? t('noun.folder') : t('noun.file');
       // Flat. Every one of these titles already begins with "Heading:", so a submenu named
       // after the plugin said the same thing twice — and with the common settings it held a
       // single item, which is a click to reach one line.
-      const item = (title, icon, listKey, add) => menu.addItem((i) => i.setTitle(title).setIcon(icon)
-        .onClick(() => this.setPathInList(listKey, path, add)));
-
-      // Heading sources: add/remove (selected mode only), and ignore/unignore (always).
-      if (this.settings.glossaryMode === 'selected') {
-        if (this.pathListed('glossarySources', path)) item(t('menu.removeFromSources', { noun }), 'minus-circle', 'glossarySources', false);
-        else item(t('menu.addToSources', { noun }), 'plus-circle', 'glossarySources', true);
-      }
-      if (this.pathListed('excludeSources', path)) item(t('menu.unignoreSource'), 'eye', 'excludeSources', false);
-      else item(t('menu.ignoreSource', { noun }), 'eye-off', 'excludeSources', true);
-
-      // Scope: always-excluded, and (in folders mode) include-in-scope.
-      if (this.pathListed('excludeFolders', path)) item(t('menu.removeFromAlwaysExcluded'), 'rotate-ccw', 'excludeFolders', false);
-      else item(t('menu.addToAlwaysExcluded', { noun }), 'ban', 'excludeFolders', true);
-      if (this.settings.scopeMode === 'folders') {
-        if (this.pathListed('scopeFolders', path)) item(t('menu.removeFromScope', { noun }), 'folder-minus', 'scopeFolders', false);
-        else item(t('menu.includeInScope', { noun }), 'folder-plus', 'scopeFolders', true);
-      }
+      menuActions(this, menu, PATH_ACTIONS, 'file', file);
 
       // Harvesting reads the note's links, so it belongs on the note rather than on a spot
       // in the text — where it had nothing to do with what was under the cursor, and where
@@ -295,16 +198,11 @@ class HeadingLinkerPlugin extends Plugin {
     this.addCommand({ id: 'rebuild-index', name: t('cmd.rebuildIndex'), callback: () => { this.rebuildIndex(); new Notice(t('notice.indexRebuilt')); this.warnDuplicateHeadings(); } });
     this.addCommand({ id: 'report-broken-links', name: t('cmd.reportBrokenLinks'), callback: () => this.reportBrokenHeadingLinks() });
 
-    // Path-list toggles for the active note (the command-palette twin of the explorer menu).
-    // Each is available only when it would change something, so add/remove never both show.
-    this.addPathCommand('add-source', t('cmd.addSource'), 'glossarySources', true, (p) => this.settings.glossaryMode === 'selected' && !this.pathListed('glossarySources', p));
-    this.addPathCommand('remove-source', t('cmd.removeSource'), 'glossarySources', false, (p) => this.pathListed('glossarySources', p));
-    this.addPathCommand('ignore-source', t('cmd.ignoreSource'), 'excludeSources', true, (p) => !this.pathListed('excludeSources', p));
-    this.addPathCommand('unignore-source', t('cmd.unignoreSource'), 'excludeSources', false, (p) => this.pathListed('excludeSources', p));
-    this.addPathCommand('exclude-note', t('cmd.excludeNote'), 'excludeFolders', true, (p) => !this.pathListed('excludeFolders', p));
-    this.addPathCommand('unexclude-note', t('cmd.unexcludeNote'), 'excludeFolders', false, (p) => this.pathListed('excludeFolders', p));
-    this.addPathCommand('scope-note', t('cmd.scopeNote'), 'scopeFolders', true, (p) => this.settings.scopeMode === 'folders' && !this.pathListed('scopeFolders', p));
-    this.addPathCommand('unscope-note', t('cmd.unscopeNote'), 'scopeFolders', false, (p) => this.settings.scopeMode === 'folders' && this.pathListed('scopeFolders', p));
+    // The explorer menu's path toggles, and their palette twins, are one list — see
+    // shared/actions.js. In the palette the object is the active note; in the menu, the
+    // path that was right-clicked.
+    registerActions(this, PATH_ACTIONS);
+    registerActions(this, EDITOR_ACTIONS);
 
     if (suggestAvailable()) this.registerEditorSuggest(new HeadingSuggest(this.app, this));
 
@@ -622,21 +520,6 @@ class HeadingLinkerPlugin extends Plugin {
   pathListed(listKey, path) {
     const entry = sanitizeFolder(path);
     return !!entry && splitLines(this.settings[listKey]).some((l) => sanitizeFolder(l) === entry);
-  }
-
-  // A command that adds/removes the active note's path in a list, shown only when
-  // `available(path)` holds — so the add and remove twins never appear together.
-  addPathCommand(id, name, listKey, add, available) {
-    this.addCommand({
-      id,
-      name,
-      checkCallback: (checking) => {
-        const f = this.app.workspace.getActiveFile();
-        if (!f || f.extension !== 'md' || !available(f.path)) return false;
-        if (!checking) this.setPathInList(listKey, f.path, add);
-        return true;
-      },
-    });
   }
 
   async setPathInList(listKey, path, add) {
