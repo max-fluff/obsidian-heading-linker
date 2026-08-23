@@ -13,6 +13,7 @@ const api = require('./api');
 const indexEvents = require('./shared/index-events');
 const { HeadingSuggest, suggestAvailable } = require('./heading-suggest');
 const { initI18n, withFamily, t, plural } = require('./shared/i18n');
+const { announceStyleSettings } = require('./shared/style-settings');
 const { buildMenu } = require('./shared/menu-verbs');
 const { registerActions, menuActions } = require('./shared/actions');
 const { PATH_ACTIONS } = require('./path-actions');
@@ -207,6 +208,7 @@ class HeadingLinkerPlugin extends Plugin {
     if (suggestAvailable()) this.registerEditorSuggest(new HeadingSuggest(this.app, this));
 
     this.addSettingTab(new HeadingLinkerSettingTab(this.app, this));
+    announceStyleSettings(this);
 
     // Published last, and deliberately so. The api is how a sibling linker finds us and
     // decides to stand down on a word we both match — so a load that throws before this
