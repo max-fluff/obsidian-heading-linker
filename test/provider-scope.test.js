@@ -106,3 +106,34 @@ describe('what we tell peers while drawing', () => {
       'peers were asked without knowing where');
   });
 });
+
+// A word two notes head used to reach a sibling as one row: `matches` reported the reading
+// we settled on and dropped the rest.
+describe('an ambiguous span as a sibling sees it', () => {
+  const ambiguous = async () => {
+    const plugin = await load();
+    plugin.findMatches = () => [{ ...SPAN, alts: ['Systems#Spawn'] }];
+    plugin.terms = [
+      { linktext: 'Guide#Spawn', label: 'Spawn', fileBase: 'Guide', aliases: [] },
+      { linktext: 'Systems#Spawn', label: 'Spawn', fileBase: 'Systems', aliases: [] },
+    ];
+    return plugin;
+  };
+
+  it('carries every heading the span could mean', async () => {
+    const plugin = await ambiguous();
+    const [span] = plugin.api.linker.matches('a spawn here');
+    assert.strictEqual(span.target, 'Guide#Spawn');
+    assert.deepStrictEqual(span.alts, [{ label: 'Spawn', target: 'Systems#Spawn' }]);
+  });
+
+  it('names each of them, since the raw linktext is not what a list shows', async () => {
+    const plugin = await ambiguous();
+    const [span] = plugin.api.linker.matches('a spawn here');
+    assert.deepStrictEqual([span.label, ...span.alts.map((a) => a.label)], ['Spawn', 'Spawn']);
+    assert.deepStrictEqual(
+      [span.target, ...span.alts.map((a) => a.target)].map((t) => plugin.api.linker.describe(t, 'spawn').note),
+      ['Heading · Guide', 'Heading · Systems']
+    );
+  });
+});

@@ -43,7 +43,13 @@ module.exports = {
       linker: createProseProvider(plugin, {
         id: 'heading-linker',
         displayName: 'Heading Linker',
-        spanOf: (m) => ({ start: m.start, end: m.end, label: m.label, target: m.linktext }),
+        spanOf: (m) => ({
+          start: m.start,
+          end: m.end,
+          label: m.label,
+          target: m.linktext,
+          alts: (m.alts || []).map((linktext) => ({ label: plugin.labelFor(linktext), target: linktext })),
+        }),
         suggestionsFor,
         excludes: (text) => plugin.wordSilenced(text) || plugin.isExcluded('excludeTerms', text),
         // The raw target reads "Guide#Spawn"; the reader wants the heading and the note it
@@ -64,6 +70,11 @@ module.exports = {
 
   getTerms() {
     return (this.terms || []).map((t) => ({ linktext: t.linktext, label: t.label, fileBase: t.fileBase, path: t.path, aliases: (t.aliases || []).slice() }));
+  },
+
+  labelFor(linktext) {
+    const term = (this.terms || []).find((x) => x.linktext === linktext);
+    return term ? term.label : String(linktext).split('#').pop();
   },
 
   resolveTerm(name) {
