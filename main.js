@@ -1,4 +1,4 @@
-/* Heading Linker 1.3.1 — bundled from src/ by esbuild. Do not edit directly; edit src/ and run "npm run build". */
+/* Heading Linker 1.4.0 — bundled from src/ by esbuild. Do not edit directly; edit src/ and run "npm run build". */
 "use strict";
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __commonJS = (cb, mod) => function __require() {
@@ -2330,6 +2330,16 @@ var require_discover = __commonJS({
         return matches;
       return matches.filter((m) => !overlaps(foreign, m.start, m.end));
     }
+    function spanMeanings(m) {
+      const out = [{ label: m.label || m.target || "", target: m.target }];
+      if (!Array.isArray(m.alts))
+        return out;
+      for (const a of m.alts) {
+        if (a && a.target !== void 0 && a.target !== null)
+          out.push({ label: a.label || a.target, target: a.target });
+      }
+      return out;
+    }
     function yieldedCandidates(app, self, text, where) {
       const out = [];
       for (const peer of discoverLinkers(app)) {
@@ -2346,35 +2356,38 @@ var require_discover = __commonJS({
         for (const m of matches) {
           if (!m || typeof m.start !== "number" || typeof m.end !== "number")
             continue;
-          out.push({
-            start: m.start,
-            end: m.end,
-            label: m.label || m.target || "",
-            target: m.target,
-            // The id survives a round trip through a DOM attribute; the opener is looked up
-            // again at click time.
-            id: peer.id,
-            source: peer.displayName || peer.id,
-            // How this row reads in an ambiguity list, asked of its owner and only when a list is
-            // actually drawn — every span on screen produces candidates, few are ever looked at.
-            describe: (display) => {
-              if (typeof peer.describe !== "function")
-                return null;
-              try {
-                return peer.describe(m.target, display);
-              } catch (e) {
-                return null;
+          for (const meta of spanMeanings(m)) {
+            out.push({
+              start: m.start,
+              end: m.end,
+              label: meta.label,
+              target: meta.target,
+              // The id survives a round trip through a DOM attribute; the opener is looked up
+              // again at click time.
+              id: peer.id,
+              source: peer.displayName || peer.id,
+              // How this row reads in an ambiguity list, asked of its owner and only when a list
+              // is actually drawn — every span on screen produces candidates, few are ever
+              // looked at.
+              describe: (display) => {
+                if (typeof peer.describe !== "function")
+                  return null;
+                try {
+                  return peer.describe(meta.target, display);
+                } catch (e) {
+                  return null;
+                }
+              },
+              open: (sourcePath, newTab) => {
+                if (typeof peer.open === "function")
+                  peer.open(meta.target, sourcePath, newTab);
+              },
+              hover: (event, targetEl, sourcePath, hoverParent) => {
+                if (typeof peer.hover === "function")
+                  peer.hover(meta.target, event, targetEl, sourcePath, hoverParent);
               }
-            },
-            open: (sourcePath, newTab) => {
-              if (typeof peer.open === "function")
-                peer.open(m.target, sourcePath, newTab);
-            },
-            hover: (event, targetEl, sourcePath, hoverParent) => {
-              if (typeof peer.hover === "function")
-                peer.hover(m.target, event, targetEl, sourcePath, hoverParent);
-            }
-          });
+            });
+          }
         }
       }
       return out;
@@ -4927,7 +4940,13 @@ var require_api = __commonJS({
           linker: createProseProvider(plugin, {
             id: "heading-linker",
             displayName: "Heading Linker",
-            spanOf: (m) => ({ start: m.start, end: m.end, label: m.label, target: m.linktext }),
+            spanOf: (m) => ({
+              start: m.start,
+              end: m.end,
+              label: m.label,
+              target: m.linktext,
+              alts: (m.alts || []).map((linktext) => ({ label: plugin.labelFor(linktext), target: linktext }))
+            }),
             suggestionsFor,
             excludes: (text) => plugin.wordSilenced(text) || plugin.isExcluded("excludeTerms", text),
             // The raw target reads "Guide#Spawn"; the reader wants the heading and the note it
@@ -4945,6 +4964,10 @@ var require_api = __commonJS({
       },
       getTerms() {
         return (this.terms || []).map((t3) => ({ linktext: t3.linktext, label: t3.label, fileBase: t3.fileBase, path: t3.path, aliases: (t3.aliases || []).slice() }));
+      },
+      labelFor(linktext) {
+        const term = (this.terms || []).find((x) => x.linktext === linktext);
+        return term ? term.label : String(linktext).split("#").pop();
       },
       resolveTerm(name) {
         const q = String(name || "").toLowerCase();
@@ -5060,6 +5083,17 @@ var require_index_events = __commonJS({
         }
       }
     };
+  }
+});
+
+// src/shared/style-settings.js
+var require_style_settings = __commonJS({
+  "src/shared/style-settings.js"(exports2, module2) {
+    "use strict";
+    function announceStyleSettings2(plugin) {
+      plugin.app.workspace.onLayoutReady(() => plugin.app.workspace.trigger("parse-style-settings"));
+    }
+    module2.exports = { announceStyleSettings: announceStyleSettings2 };
   }
 });
 
@@ -6533,6 +6567,7 @@ var api = require_api();
 var indexEvents = require_index_events();
 var { HeadingSuggest, suggestAvailable } = require_heading_suggest();
 var { initI18n, withFamily, t, plural } = require_i18n();
+var { announceStyleSettings } = require_style_settings();
 var { buildMenu } = require_menu_verbs();
 var { registerActions, menuActions } = require_actions();
 var { PATH_ACTIONS } = require_path_actions();
@@ -6700,6 +6735,7 @@ var HeadingLinkerPlugin = class extends Plugin {
     if (suggestAvailable())
       this.registerEditorSuggest(new HeadingSuggest(this.app, this));
     this.addSettingTab(new HeadingLinkerSettingTab(this.app, this));
+    announceStyleSettings(this);
     this.api = this.buildApi();
   }
   async saveSettings() {
