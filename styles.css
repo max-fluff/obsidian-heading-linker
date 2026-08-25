@@ -3,6 +3,12 @@
 /* Styles every linker plugin uses. The token below stands for the plugin class prefix;
    build.mjs substitutes it when it assembles styles.css. See CONTRIBUTING.md. */
 
+/* The second column of a suggestion row — the note in one pair, the path in the other. */
+body.heading-hide-suggestion-path .heading-path,
+body.heading-hide-suggestion-path .heading-suggestion-note {
+  display: none;
+}
+
 .heading-preview-table {
   width: 100%;
   border-collapse: collapse;
@@ -104,18 +110,91 @@
 
 /* Styles both prose linkers use. The plugin class prefix is substituted by build.mjs. */
 
+/* Colours are declared, not merely read with a fallback. Style Settings shows a colour row's
+   live computed value when the row carries no default, and an undeclared variable reads as
+   empty and renders a blank swatch. Its own rule is `body.css-settings-manager`, so a colour
+   chosen there still outranks this. See CONTRIBUTING.md. */
+body {
+  --heading-link-color: var(--link-color);
+  --heading-link-color-hover: var(--link-color-hover);
+  --heading-link-background: rgba(0, 0, 0, 0);
+  --heading-link-background-hover: var(--heading-link-background);
+  --heading-ambiguous-color: var(--heading-link-color);
+}
+
+/* What a highlight looks like in each state is decided in --pl-* below, where no theme
+   competes, and one rule spends them. That rule sits exactly where the plugin's has always
+   sat: a theme that paints its own links still wins, as it did before any of this was
+   configurable. See CONTRIBUTING.md. */
 .heading-link,
 .cm-heading-link {
-  color: var(--heading-link-color, var(--link-color));
+  --pl-ink: var(--heading-link-color);
+  --pl-bg: var(--heading-link-background);
+  --pl-width: var(--heading-underline-width, 1px);
+  --pl-style: var(--heading-underline-style, dotted);
+}
+
+.heading-ambiguous,
+.cm-heading-ambiguous {
+  --pl-ink: var(--heading-ambiguous-color);
+  --pl-width: var(--heading-ambiguous-underline-width, 3px);
+  --pl-style: var(--heading-ambiguous-underline-style, double);
+}
+
+.heading-link:hover,
+.cm-heading-link:hover {
+  --pl-ink: var(--heading-link-color-hover);
+  --pl-bg: var(--heading-link-background-hover);
+  --pl-style: var(--heading-underline-style-hover, solid);
+}
+
+/* The tint marks a collision at rest and hover answers with the ordinary hover colour, but the
+   double underline stays either way — it is what says the word is ambiguous. */
+.heading-ambiguous:hover,
+.cm-heading-ambiguous:hover {
+  --pl-width: var(--heading-ambiguous-underline-width, 3px);
+  --pl-style: var(--heading-ambiguous-underline-style, double);
+}
+
+/* currentColor, not `inherit`: a CSS-wide keyword in a custom property makes the property
+   inherit rather than storing the word, and the highlight would keep its colour. */
+body.heading-quiet .heading-link:not(:hover),
+body.heading-quiet .cm-heading-link:not(:hover) {
+  --pl-ink: currentColor;
+  --pl-bg: transparent;
+  --pl-style: none;
+}
+
+/* The one rule that meets the theme's own. Every default here resolves to what the property
+   would have been with no rule at all — a transparent background, no radius, no offset,
+   inherited weight — so an untouched vault renders exactly as it did before.
+   The hover selectors carry no declarations of their own; they are listed so each state keeps
+   the specificity its own rule used to have, which is what decides a tie with the theme. */
+.heading-link,
+.cm-heading-link,
+.heading-link:hover,
+.cm-heading-link:hover {
+  color: var(--pl-ink);
+  background-color: var(--pl-bg);
+  border-radius: var(--heading-link-radius, 0px);
+  border-bottom: var(--pl-width) var(--pl-style) var(--pl-ink);
+  /* Vertical padding on an inline box does not grow the line, so this offsets the border
+     without reflowing the paragraph. Horizontal padding would, so there is none. */
+  padding-bottom: var(--heading-underline-offset, 0px);
+  font-weight: var(--heading-link-weight, inherit);
   text-decoration: none;
-  border-bottom: 1px var(--heading-underline-style, dotted) var(--heading-link-color, var(--link-color));
   cursor: pointer;
 }
 
-/* Reading view builds the match as a real <a> so hover preview and click behave like any
-   link — and a theme underlines links, which lands a second line under our own. Ours is the
-   one carrying the underline-style setting, so the anchor's own decoration is switched off
-   here, at a specificity a theme's `.markdown-rendered a` rule can't outrank. */
+body.heading-link-italic .heading-link,
+body.heading-link-italic .cm-heading-link {
+  font-style: italic;
+}
+
+/* Reading view builds the match as a real <a>, and a theme underlines links — which lands a
+   second line under our own. Only that is answered here, at a specificity a theme's
+   `.markdown-rendered a` rule can't outrank; the colour is left to whoever the reader's theme
+   says wins, exactly as before. */
 a.heading-link,
 a.heading-link:hover,
 a.heading-link.internal-link,
@@ -123,22 +202,22 @@ a.heading-link.internal-link:hover {
   text-decoration: none;
 }
 
-.heading-link:hover,
-.cm-heading-link:hover {
-  color: var(--link-color-hover);
-  border-bottom-style: solid;
+/* `none` rather than an empty string: with no symbol chosen there is no pseudo-element at all.
+   The symbol is not part of the word, so it carries none of the word's underline — and it
+   survives quiet mode, which is the one thing quiet mode must not hide. */
+.heading-ambiguous::before,
+.cm-heading-ambiguous::before,
+body.heading-mark-after .heading-ambiguous::after,
+body.heading-mark-after .cm-heading-ambiguous::after {
+  content: var(--heading-ambiguous-symbol, none);
+  border-bottom: none;
+  font-size: 0.8em;
+  vertical-align: super;
 }
 
-.heading-ambiguous,
-.cm-heading-ambiguous {
-  border-bottom-width: 3px;
-  border-bottom-style: var(--heading-ambiguous-underline-style, double);
-}
-
-.heading-ambiguous:hover,
-.cm-heading-ambiguous:hover {
-  border-bottom-width: 3px;
-  border-bottom-style: var(--heading-ambiguous-underline-style, double);
+body.heading-mark-after .heading-ambiguous::before,
+body.heading-mark-after .cm-heading-ambiguous::before {
+  content: none;
 }
 
 /* Autocomplete suggestion rows */
@@ -268,7 +347,7 @@ a.heading-link.internal-link:hover {
 .heading-choices {
   position: fixed;
   z-index: var(--layer-popover);
-  max-width: 320px;
+  max-width: var(--heading-choices-width, 320px);
   padding: 6px;
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
@@ -311,14 +390,24 @@ name: Heading Linker
 id: heading-linker
 settings:
   -
+    id: heading-links
+    title: Links
+    type: heading
+    level: 1
+  -
     id: heading-link-color
-    title: Highlight color
-    description: Color of heading-term highlights. Leave at default to follow the theme's link color.
-    type: variable-themed-color
+    title: Highlight colour
+    description: Follows the theme's link colour until you pick one.
+    type: variable-color
     format: hex
     opacity: false
-    default-light: '#705dcf'
-    default-dark: '#a68cff'
+  -
+    id: heading-link-color-hover
+    title: Highlight colour on hover
+    description: Follows the theme's hover colour until you pick one.
+    type: variable-color
+    format: hex
+    opacity: false
   -
     id: heading-underline-style
     title: Underline style
@@ -331,9 +420,88 @@ settings:
       - double
       - none
   -
+    id: heading-underline-style-hover
+    title: Underline style on hover
+    type: variable-select
+    default: solid
+    options:
+      - solid
+      - dotted
+      - dashed
+      - double
+      - none
+  -
+    id: heading-underline-width
+    title: Underline thickness
+    type: variable-number-slider
+    default: 1
+    min: 0
+    max: 4
+    step: 1
+    format: px
+  -
+    id: heading-underline-offset
+    title: Underline offset
+    description: How far the underline sits below the text. Large values can reach the line under it.
+    type: variable-number-slider
+    default: 0
+    min: 0
+    max: 4
+    step: 1
+    format: px
+  -
+    id: heading-link-background
+    title: Highlight background
+    description: Fill behind a highlighted word, like a marker pen. Transparent until you pick one; pair it with underline style "none" for the marker look.
+    type: variable-color
+    format: hex
+    opacity: true
+  -
+    id: heading-link-background-hover
+    title: Highlight background on hover
+    description: Follows the resting background until you pick one.
+    type: variable-color
+    format: hex
+    opacity: true
+  -
+    id: heading-link-radius
+    title: Background corner radius
+    type: variable-number-slider
+    default: 0
+    min: 0
+    max: 6
+    step: 1
+    format: px
+  -
+    id: heading-link-weight
+    title: Font weight
+    type: variable-select
+    default: inherit
+    options:
+      - inherit
+      - '500'
+      - '600'
+      - '700'
+  -
+    id: heading-link-italic
+    title: Italic
+    type: class-toggle
+    default: false
+  -
+    id: heading-quiet
+    title: Show highlight only on hover
+    description: A highlighted word reads as plain text until the pointer is on it. The ambiguity symbol below stays visible, so collisions can still be spotted.
+    type: class-toggle
+    default: false
+  -
+    id: heading-ambiguity
+    title: Ambiguous terms
+    type: heading
+    level: 1
+  -
     id: heading-ambiguous-underline-style
     title: Ambiguous-term underline style
-    description: Underline for words that match more than one heading.
+    description: Underline for words with more than one possible target.
     type: variable-select
     default: double
     options:
@@ -341,6 +509,56 @@ settings:
       - dotted
       - dashed
       - solid
+  -
+    id: heading-ambiguous-underline-width
+    title: Ambiguous-term underline thickness
+    type: variable-number-slider
+    default: 3
+    min: 1
+    max: 5
+    step: 1
+    format: px
+  -
+    id: heading-ambiguous-color
+    title: Ambiguous-term colour
+    description: Follows the highlight colour until you pick one. A different colour is the clearest way to spot a collision in a theme where the underline barely shows.
+    type: variable-color
+    format: hex
+    opacity: false
+  -
+    id: heading-ambiguous-symbol
+    title: Ambiguous-term symbol
+    description: Any character or emoji, shown beside a word with more than one possible target. Leave empty for none.
+    type: variable-text
+    quotes: true
+    default: ''
+  -
+    id: heading-mark-after
+    title: Put the symbol after the word
+    description: Off shows it before the word.
+    type: class-toggle
+    default: false
+  -
+    id: heading-choices-width
+    title: Ambiguity list width
+    description: How wide the list of a word's possible meanings grows on hover.
+    type: variable-number-slider
+    default: 320
+    min: 200
+    max: 640
+    step: 20
+    format: px
+  -
+    id: heading-autocomplete
+    title: Autocomplete
+    type: heading
+    level: 1
+  -
+    id: heading-hide-suggestion-path
+    title: Hide the second column
+    description: Drop the note or path shown beside a suggestion, leaving the name alone.
+    type: class-toggle
+    default: false
 
 */
 

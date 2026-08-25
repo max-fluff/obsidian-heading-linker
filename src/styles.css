@@ -3,37 +3,8 @@
 name: Heading Linker
 id: %p%-linker
 settings:
-  -
-    id: %p%-link-color
-    title: Highlight color
-    description: Color of %p%-term highlights. Leave at default to follow the theme's link color.
-    type: variable-themed-color
-    format: hex
-    opacity: false
-    default-light: '#705dcf'
-    default-dark: '#a68cff'
-  -
-    id: %p%-underline-style
-    title: Underline style
-    type: variable-select
-    default: dotted
-    options:
-      - dotted
-      - solid
-      - dashed
-      - double
-      - none
-  -
-    id: %p%-ambiguous-underline-style
-    title: Ambiguous-term underline style
-    description: Underline for words that match more than one %p%.
-    type: variable-select
-    default: double
-    options:
-      - double
-      - dotted
-      - dashed
-      - solid
+%rows:prose%
+%rows:pickers%
 
 */
 

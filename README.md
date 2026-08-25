@@ -196,7 +196,21 @@ Install more than one linker and they will sometimes claim the same word or the 
 
 The list appears only when another linker is installed. Each plugin moves itself, so reordering may take a move from more than one settings tab; every arrangement is reachable that way.
 
-The highlight color and underline styles are exposed through **[Style Settings](https://github.com/mgmeyers/obsidian-style-settings)** if you have it.
+How a highlight looks is exposed through **[Style Settings](https://github.com/mgmeyers/obsidian-style-settings)** if you have it, under a *Heading Linker* section. Left at default, a highlight follows your theme's link color with a dotted underline.
+
+| Section | What you can set |
+|---|---|
+| **Links** | colour and underline (style, thickness, offset), the same again for hover, a marker-pen background with its corner radius, font weight, italic, and *Show highlight only on hover* — a highlighted word reads as plain text until you point at it |
+| **Ambiguous terms** | the double underline (style, thickness), a colour that tells a collision apart, a symbol beside the word, and how wide the list of headings grows on hover |
+| **Autocomplete** | hide the note column in suggestions |
+
+Every colour picker opens on the colour actually in use and follows your theme until you pick one; every option is a plain CSS variable or a class on `body`, so a snippet in `.obsidian/snippets/` does just as well:
+
+- **Links** — `--heading-link-color`, `--heading-link-color-hover`, `--heading-underline-style`, `--heading-underline-style-hover`, `--heading-underline-width`, `--heading-underline-offset`, `--heading-link-background`, `--heading-link-background-hover`, `--heading-link-radius`, `--heading-link-weight`; `body.heading-link-italic`, `body.heading-quiet`
+- **Ambiguous terms** — `--heading-ambiguous-underline-style`, `--heading-ambiguous-underline-width`, `--heading-ambiguous-color`, `--heading-ambiguous-symbol`, `--heading-choices-width`; `body.heading-mark-after`
+- **Autocomplete** — `body.heading-hide-suggestion-path`
+
+To mark collisions, set *Ambiguous-term colour*, or type anything into *Ambiguous-term symbol* — a character or an emoji, shown before the word unless you turn on *Put the symbol after the word*.
 
 ## Skipped contexts
 
@@ -293,7 +307,7 @@ Requires Obsidian 1.4.0 or newer, and works on both desktop and mobile — it re
 
 Nothing below is required, but the plugin cooperates with them if you have them:
 
-- **[Style Settings](https://github.com/mgmeyers/obsidian-style-settings)** — a UI for the highlight color and underline styles, including the ambiguous-heading underline.
+- **[Style Settings](https://github.com/mgmeyers/obsidian-style-settings)** — a UI for everything the plugin draws: highlight color and underline, the marker-pen background, and how ambiguous headings are told apart.
 - **Page Preview** (core plugin) — provides the hover preview on heading links; the plugin registers as its own *Heading Linker* source you can toggle independently.
 
 ## Related plugins
