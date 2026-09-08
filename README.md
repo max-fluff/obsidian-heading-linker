@@ -200,15 +200,17 @@ How a highlight looks is exposed through **[Style Settings](https://github.com/m
 
 | Section | What you can set |
 |---|---|
-| **Links** | colour and underline (style, thickness, offset), the same again for hover, a marker-pen background with its corner radius, font weight, italic, and *Show highlight only on hover* — a highlighted word reads as plain text until you point at it |
+| **Links** | colour and underline (style, thickness, offset), the same again for hover, *Follow the link colour* (a hue of your own, kept in step with the colour your theme gives links there), a marker-pen background with its corner radius, font weight, italic, and *Show highlight only on hover* — a highlighted word reads as plain text until you point at it |
 | **Ambiguous terms** | the double underline (style, thickness), a colour that tells a collision apart, a symbol beside the word, and how wide the list of headings grows on hover |
 | **Autocomplete** | hide the note column in suggestions |
 
 Every colour picker opens on the colour actually in use and follows your theme until you pick one; every option is a plain CSS variable or a class on `body`, so a snippet in `.obsidian/snippets/` does just as well:
 
-- **Links** — `--heading-link-color`, `--heading-link-color-hover`, `--heading-underline-style`, `--heading-underline-style-hover`, `--heading-underline-width`, `--heading-underline-offset`, `--heading-link-background`, `--heading-link-background-hover`, `--heading-link-radius`, `--heading-link-weight`; `body.heading-link-italic`, `body.heading-quiet`
+- **Links** — `--heading-link-color`, `--heading-link-color-hover`, `--heading-hue-shift`, `--heading-hue`, `--heading-underline-style`, `--heading-underline-style-hover`, `--heading-underline-width`, `--heading-underline-offset`, `--heading-link-background`, `--heading-link-background-hover`, `--heading-link-radius`, `--heading-link-weight`; `body.heading-hue-turned`, `body.heading-hue-fixed`, `body.heading-link-italic`, `body.heading-quiet`
 - **Ambiguous terms** — `--heading-ambiguous-underline-style`, `--heading-ambiguous-underline-width`, `--heading-ambiguous-color`, `--heading-ambiguous-symbol`, `--heading-choices-width`; `body.heading-mark-after`
 - **Autocomplete** — `body.heading-hide-suggestion-path`
+
+*Follow the link colour* derives a highlight from the link colour of the note it sits in — the one your theme paints there, including a colour a `cssclass` gives a single note — and either turns its hue by *Hue shift* or replaces it with *Hue*. Lightness and saturation stay the theme's, so the highlight keeps its relationship to your links when the theme, the accent colour or the note changes. It needs an Obsidian installer new enough for relative colours; without them the colours above are used.
 
 To mark collisions, set *Ambiguous-term colour*, or type anything into *Ambiguous-term symbol* — a character or an emoji, shown before the word unless you turn on *Put the symbol after the word*.
 
