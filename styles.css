@@ -115,6 +115,14 @@ body.heading-hide-suggestion-path .heading-suggestion-note {
   visibility: hidden;
 }
 
+/* Our sliders in the Style Settings panel. Obsidian sizes the value label to its text, so
+   moving from 5 to -5 or 180 widened it and reflowed the description beside it. Four digits
+   hold every value a row of ours offers (-180, 1200, 0.25). */
+.setting-item[data-id^="heading-"] .slider-value {
+  min-width: 4ch;
+  text-align: end;
+}
+
 /* Styles both prose linkers use. The plugin class prefix is substituted by build.mjs. */
 
 /* Colours are declared, not merely read with a fallback. Style Settings shows a colour row's
@@ -125,15 +133,15 @@ body.heading-hide-suggestion-path .heading-suggestion-note {
 :root {
   --heading-link-color: var(--link-color);
   --heading-link-color-hover: var(--link-color-hover);
+  --heading-ambiguous-color: var(--link-color);
   --heading-link-background: rgba(0, 0, 0, 0);
 }
 
 /* A default that follows another of ours belongs where an override lands, not below it: a
    custom property substitutes its var() on the element it is declared on, so from `:root`
-   these two would go on reading the theme's colour after one was set on `body`. */
+   this would go on reading the theme's colour after one was set on `body`. */
 body {
   --heading-link-background-hover: var(--heading-link-background);
-  --heading-ambiguous-color: var(--heading-link-color);
 }
 
 /* What a highlight looks like in each state is decided in --pl-* below, where no theme
@@ -172,10 +180,12 @@ body {
   --pl-style: var(--heading-ambiguous-underline-style, double);
 }
 
-/* A colour picked in Style Settings is the reader's own, and takes the ink over from the
-   theme's for as long as the pick stands. The classes come from trackPickedColors(). */
-body.heading-link-color-picked .heading-link:not(:hover),
-body.heading-link-color-picked .cm-heading-link:not(:hover) {
+/* A colour picked in Style Settings overrides the theme's for as long as the pick stands; with
+   none, the theme's own colour is used. The classes come from trackThemeColors().
+   The highlight colour is the ordinary highlight's alone: an ambiguous word at rest keeps the
+   theme's link colour, or the one picked for it, so a collision stays told apart. */
+body.heading-link-color-picked .heading-link:not(.heading-ambiguous):not(:hover),
+body.heading-link-color-picked .cm-heading-link:not(.cm-heading-ambiguous):not(:hover) {
   --pl-ink: var(--heading-link-color);
 }
 
@@ -184,45 +194,69 @@ body.heading-link-color-hover-picked .cm-heading-link:hover {
   --pl-ink: var(--heading-link-color-hover);
 }
 
-/* Relative colours: an installer without them drops the block whole and the colour above
-   stands. The source is read where the mark sits, so the hue follows the link colour of the
-   note it is in. Below the picked rules, above the ambiguous one: a mode outranks a picked
-   colour, a picked ambiguous colour outranks the mode. */
-@supports (color: oklch(from red l c h)) {
-  body.heading-hue-turned .heading-link:not(:hover),
-  body.heading-hue-turned .cm-heading-link:not(:hover) {
-    --pl-ink: oklch(from var(--link-color) l c calc(h + var(--heading-hue-shift, 0)));
-  }
-
-  body.heading-hue-turned .heading-link:hover,
-  body.heading-hue-turned .cm-heading-link:hover {
-    --pl-ink: oklch(from var(--link-color-hover) l c calc(h + var(--heading-hue-shift, 0)));
-  }
-
-  body.heading-hue-fixed .heading-link:not(:hover),
-  body.heading-hue-fixed .cm-heading-link:not(:hover) {
-    --pl-ink: oklch(from var(--link-color) l c var(--heading-hue, 210));
-  }
-
-  body.heading-hue-fixed .heading-link:hover,
-  body.heading-hue-fixed .cm-heading-link:hover {
-    --pl-ink: oklch(from var(--link-color-hover) l c var(--heading-hue, 210));
-  }
-
-  /* Inside the block with the mode it answers for: on an installer that drops it, a mode is
-     not merely inert but must leave the theme's own colour where it was. */
-  body.heading-hue-turned .heading-link,
-  body.heading-hue-turned .cm-heading-link,
-  body.heading-hue-fixed .heading-link,
-  body.heading-hue-fixed .cm-heading-link {
-    color: var(--pl-ink) !important;
-  }
-}
-
-/* After the link's own, so a word that is both takes the ambiguous colour at rest. */
 body.heading-ambiguous-color-picked .heading-ambiguous:not(:hover),
 body.heading-ambiguous-color-picked .cm-heading-ambiguous:not(:hover) {
   --pl-ink: var(--heading-ambiguous-color);
+}
+
+/* Relative colours: an installer without them drops the block whole and the colour above
+   stands. A hue shift other than 0 turns the ordinary highlight's colour — the one picked,
+   else the theme's link colour where the word sits, so a cssclass recolouring a note is
+   followed too — keeping its lightness and saturation. The class comes from
+   trackThemeColors(). An ambiguous word is not turned: its own colour is what marks it. */
+@supports (color: oklch(from red l c h)) {
+  body.heading-hue-shifted .heading-link:not(.heading-ambiguous):not(:hover),
+  body.heading-hue-shifted .cm-heading-link:not(.cm-heading-ambiguous):not(:hover) {
+    --pl-ink: oklch(from var(--link-color) l c calc(h + var(--heading-hue-shift, 0)));
+  }
+
+  body.heading-hue-shifted.heading-link-color-picked .heading-link:not(.heading-ambiguous):not(:hover),
+  body.heading-hue-shifted.heading-link-color-picked .cm-heading-link:not(.cm-heading-ambiguous):not(:hover) {
+    --pl-ink: oklch(from var(--heading-link-color) l c calc(h + var(--heading-hue-shift, 0)));
+  }
+
+  body.heading-hue-shifted .heading-link:not(.heading-ambiguous):hover,
+  body.heading-hue-shifted .cm-heading-link:not(.cm-heading-ambiguous):hover {
+    --pl-ink: oklch(from var(--link-color-hover) l c calc(h + var(--heading-hue-shift, 0)));
+  }
+
+  body.heading-hue-shifted.heading-link-color-hover-picked .heading-link:not(.heading-ambiguous):hover,
+  body.heading-hue-shifted.heading-link-color-hover-picked .cm-heading-link:not(.cm-heading-ambiguous):hover {
+    --pl-ink: oklch(from var(--heading-link-color-hover) l c calc(h + var(--heading-hue-shift, 0)));
+  }
+
+  /* An ambiguous word has a shift of its own, turning its own colour the same way: the one
+     picked for it, else the theme's link colour, and the hover colour on hover. */
+  body.heading-ambiguous-hue-shifted .heading-ambiguous:not(:hover),
+  body.heading-ambiguous-hue-shifted .cm-heading-ambiguous:not(:hover) {
+    --pl-ink: oklch(from var(--link-color) l c calc(h + var(--heading-ambiguous-hue-shift, 0)));
+  }
+
+  body.heading-ambiguous-hue-shifted.heading-ambiguous-color-picked .heading-ambiguous:not(:hover),
+  body.heading-ambiguous-hue-shifted.heading-ambiguous-color-picked .cm-heading-ambiguous:not(:hover) {
+    --pl-ink: oklch(from var(--heading-ambiguous-color) l c
+      calc(h + var(--heading-ambiguous-hue-shift, 0)));
+  }
+
+  body.heading-ambiguous-hue-shifted .heading-ambiguous:hover,
+  body.heading-ambiguous-hue-shifted .cm-heading-ambiguous:hover {
+    --pl-ink: oklch(from var(--link-color-hover) l c calc(h + var(--heading-ambiguous-hue-shift, 0)));
+  }
+
+  body.heading-ambiguous-hue-shifted.heading-link-color-hover-picked .heading-ambiguous:hover,
+  body.heading-ambiguous-hue-shifted.heading-link-color-hover-picked .cm-heading-ambiguous:hover {
+    --pl-ink: oklch(from var(--heading-link-color-hover) l c
+      calc(h + var(--heading-ambiguous-hue-shift, 0)));
+  }
+
+  /* Inside the block with the shift it answers for: on an installer that drops it, a shift
+     is not merely inert but must leave the theme's own colour where it was. */
+  body.heading-hue-shifted .heading-link:not(.heading-ambiguous),
+  body.heading-hue-shifted .cm-heading-link:not(.cm-heading-ambiguous),
+  body.heading-ambiguous-hue-shifted .heading-ambiguous,
+  body.heading-ambiguous-hue-shifted .cm-heading-ambiguous {
+    color: var(--pl-ink) !important;
+  }
 }
 
 /* currentColor, not `inherit`: a CSS-wide keyword in a custom property makes the property
@@ -258,8 +292,8 @@ body.heading-quiet .cm-heading-link:not(:hover) {
 /* The one place the theme is answered rather than left to win: a colour the reader picked and
    a highlight they quieted. A derived hue answers from inside its own @supports block above.
    See CONTRIBUTING.md. */
-body.heading-link-color-picked .heading-link,
-body.heading-link-color-picked .cm-heading-link,
+body.heading-link-color-picked .heading-link:not(.heading-ambiguous),
+body.heading-link-color-picked .cm-heading-link:not(.cm-heading-ambiguous),
 body.heading-link-color-hover-picked .heading-link:hover,
 body.heading-link-color-hover-picked .cm-heading-link:hover,
 body.heading-ambiguous-color-picked .heading-ambiguous,
@@ -480,47 +514,25 @@ settings:
   -
     id: heading-link-color
     title: Highlight colour
-    description: Follows the theme's link colour until you pick one.
+    description: Theme link colour until you pick one.
     type: variable-color
     format: hex
     opacity: false
   -
     id: heading-link-color-hover
     title: Highlight colour on hover
-    description: Follows the theme's hover colour until you pick one.
+    description: Theme hover colour until you pick one.
     type: variable-color
     format: hex
     opacity: false
   -
-    id: heading-hue-mode
-    title: Follow the link colour
-    description: Paints a highlight from the link colour where the word sits — including one a cssclass gives a single note — with a hue of your own, so it keeps that relationship when the theme changes. Leave empty to use the colours above. Relative colours need a recent Obsidian installer; without them the colours above are used.
-    type: class-select
-    allowEmpty: true
-    options:
-      -
-        label: Shift its hue
-        value: heading-hue-turned
-      -
-        label: Replace its hue
-        value: heading-hue-fixed
-  -
     id: heading-hue-shift
     title: Hue shift
-    description: How far round the colour wheel a highlight sits from the link colour, in degrees. Read by "Shift its hue".
+    description: Shifts the hue of the colours above. 0 is off.
     type: variable-number-slider
     default: 0
     min: -180
     max: 180
-    step: 5
-  -
-    id: heading-hue
-    title: Hue
-    description: The hue a highlight takes, in degrees, keeping the lightness and saturation of the link colour beside it. Read by "Replace its hue".
-    type: variable-number-slider
-    default: 210
-    min: 0
-    max: 360
     step: 5
   -
     id: heading-underline-style
@@ -556,7 +568,7 @@ settings:
   -
     id: heading-underline-offset
     title: Underline offset
-    description: How far the underline sits below the text. Large values can reach the line under it.
+    description: Gap between the text and the underline.
     type: variable-number-slider
     default: 0
     min: 0
@@ -566,14 +578,14 @@ settings:
   -
     id: heading-link-background
     title: Highlight background
-    description: Fill behind a highlighted word, like a marker pen. Transparent until you pick one; pair it with underline style "none" for the marker look.
+    description: Fill behind the word. With underline style "none" it looks like a marker pen.
     type: variable-color
     format: hex
     opacity: true
   -
     id: heading-link-background-hover
     title: Highlight background on hover
-    description: Follows the resting background until you pick one.
+    description: Same as the background until you pick one.
     type: variable-color
     format: hex
     opacity: true
@@ -604,7 +616,7 @@ settings:
   -
     id: heading-quiet
     title: Show highlight only on hover
-    description: A highlighted word reads as plain text until the pointer is on it. The ambiguity symbol below stays visible, so collisions can still be spotted.
+    description: Show the highlight only while the pointer is on the word. The ambiguity symbol stays visible.
     type: class-toggle
     default: false
   -
@@ -615,7 +627,7 @@ settings:
   -
     id: heading-ambiguous-underline-style
     title: Ambiguous-term underline style
-    description: Underline for words with more than one possible target.
+    description: Underline for words with more than one target.
     type: variable-select
     default: double
     options:
@@ -635,14 +647,23 @@ settings:
   -
     id: heading-ambiguous-color
     title: Ambiguous-term colour
-    description: Follows the highlight colour until you pick one. A different colour is the clearest way to spot a collision in a theme where the underline barely shows.
+    description: Theme link colour until you pick one. The highlight colour does not apply here.
     type: variable-color
     format: hex
     opacity: false
   -
+    id: heading-ambiguous-hue-shift
+    title: Ambiguous-term hue shift
+    description: Shifts the hue of the ambiguous-term colour. 0 is off.
+    type: variable-number-slider
+    default: 0
+    min: -180
+    max: 180
+    step: 5
+  -
     id: heading-ambiguous-symbol
     title: Ambiguous-term symbol
-    description: Any character or emoji, shown beside a word with more than one possible target. Leave empty for none.
+    description: Character or emoji shown next to a word with more than one target. Empty for none.
     type: variable-text
     quotes: true
     default: ''
@@ -655,7 +676,7 @@ settings:
   -
     id: heading-choices-width
     title: Ambiguity list width
-    description: How wide the list of a word's possible meanings grows on hover.
+    description: Width of the list of meanings shown on hover.
     type: variable-number-slider
     default: 320
     min: 200
@@ -670,7 +691,7 @@ settings:
   -
     id: heading-hide-suggestion-path
     title: Hide the second column
-    description: Drop the note or path shown beside a suggestion, leaving the name alone.
+    description: Hide the note or path shown next to a suggestion.
     type: class-toggle
     default: false
 

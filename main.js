@@ -3087,10 +3087,23 @@ var require_matcher = __commonJS({
       return upper / letters.length > 0.75;
     }
     var smartCaseFits = (plugin, c, surface) => !plugin.settings.smartCase || !c.cs || surface === c.caseText;
+    var wordRuns = (text) => [...String(text).matchAll(/[\p{L}\p{Nd}]+/gu)];
     function createMatcher(config) {
       const { idOf, selfIdOf, fieldsOf } = config;
       const accepts = config.accepts || (() => true);
       const caseFits = config.caseFits || smartCaseFits;
+      const idsIn = (matches, except) => {
+        const out = /* @__PURE__ */ new Set();
+        for (const m of matches) {
+          out.add(idOf(m));
+          if (m.alts)
+            for (const a of m.alts)
+              out.add(a);
+        }
+        if (except)
+          out.delete(except);
+        return [...out];
+      };
       return {
         // Keys for a word: the union from every language that claims it (same-script
         // languages overlap); words no language claims fall back to the exact form.
@@ -3119,37 +3132,48 @@ var require_matcher = __commonJS({
           return out;
         },
         tokenizeForm(form) {
-          const words = [...form.matchAll(/[\p{L}\p{Nd}]+/gu)].map((m) => m[0]);
-          return words.map((raw) => ({ raw, keys: this.keysFor(raw) }));
+          return wordRuns(form).map(([raw]) => ({ raw, keys: this.keysFor(raw) }));
         },
         // The fields every index entry carries for one written form, or null if the form holds
         // no word at all. Built here rather than by each plugin's index: a forgotten `cs` or
         // `caseText` disables smart case for that form silently, with nothing to notice.
+        //
+        // `seps` keeps what the form itself writes between its words, so "1234/1234", "TCP/IP"
+        // or "Node.js" match where the text spells them the same way. Spaces and hyphens are
+        // taken between any two words regardless; a separator only the form has is not loosened
+        // into matching any other punctuation.
         formEntry(form) {
-          const words = this.tokenizeForm(form);
-          if (!words.length)
+          const runs = wordRuns(form);
+          if (!runs.length)
             return null;
-          return { words, wordCount: words.length, cs: isAcronymish(form), caseText: form };
+          const words = runs.map((m) => ({ raw: m[0], keys: this.keysFor(m[0]) }));
+          const seps = runs.slice(1).map((m, k) => form.slice(runs[k].index + runs[k][0].length, m.index));
+          return { words, wordCount: words.length, seps, cs: isAcronymish(form), caseText: form };
         },
         // Every term id whose form matches `text`, `except` one. Runs the same scan as the
         // highlighter, so collisions agree with what actually gets linked.
         termsMatchingText(text, except) {
-          const out = /* @__PURE__ */ new Set();
-          for (const m of this.findMatches(text, null)) {
-            out.add(idOf(m));
-            if (m.alts)
-              for (const a of m.alts)
-                out.add(a);
-          }
-          if (except)
-            out.delete(except);
-          return [...out];
+          return idsIn(this.findMatches(text, null), except);
+        },
+        // Every term id whose form covers all of `text`, `except` one — whether `text` as a term
+        // or alias of its own would collide. A form matching only part of it does not: the scan
+        // takes the longest form at each spot, so a new "natural language" wins over an existing
+        // "language" wherever both fit, and is no duplicate of it.
+        termsMatchingWhole(text, except) {
+          const runs = wordRuns(text);
+          if (!runs.length)
+            return [];
+          const last = runs[runs.length - 1];
+          const from = runs[0].index;
+          const to = last.index + last[0].length;
+          const whole = this.findMatches(text, null).filter((m) => m.start === from && m.end === to);
+          return idsIn(whole, except);
         },
         // `selfId` identifies the note being scanned when it is itself a term source; its own
         // entries are skipped so a note doesn't link to itself.
         findMatches(text, selfId, opts = {}) {
           const protect = opts.protect ? this.computeProtected(text) : null;
-          const tokens = [...text.matchAll(/[\p{L}\p{Nd}]+/gu)].map((m) => {
+          const tokens = wordRuns(text).map((m) => {
             const raw = m[0];
             return { raw, start: m.index, end: m.index + raw.length, keys: this.keysFor(raw) };
           });
@@ -3179,7 +3203,7 @@ var require_matcher = __commonJS({
                 const w = c.words[k];
                 if (k > 0) {
                   const between = text.slice(tokens[i + k - 1].end, t2.start);
-                  if (/[^\s-]/.test(between))
+                  if (/[^\s-]/.test(between) && between !== (c.seps && c.seps[k - 1]))
                     return false;
                 }
                 const t2keys = k === 0 ? t2.keys : this.keysFor(t2.raw);
@@ -5101,9 +5125,12 @@ var require_style_settings = __commonJS({
 var require_theme_colors = __commonJS({
   "src/shared/theme-colors.js"(exports2, module2) {
     "use strict";
+    var PROSE_LINK = "var(--link-color, var(--text-accent))";
     var PROSE_COLORS2 = {
-      "link-color": "var(--link-color, var(--text-accent))",
-      "link-color-hover": "var(--link-color-hover, var(--text-accent-hover, var(--link-color, var(--text-accent))))"
+      "link-color": PROSE_LINK,
+      "link-color-hover": "var(--link-color-hover, var(--text-accent-hover, var(--link-color, var(--text-accent))))",
+      // The theme's link colour, not the highlight's: a collision keeps its own colour.
+      "ambiguous-color": PROSE_LINK
     };
     var SIGIL_COLORS = {
       "link-color": "var(--link-external-color, var(--link-color, var(--text-accent)))",
@@ -5113,9 +5140,15 @@ var require_theme_colors = __commonJS({
     var PROSE_PICKS2 = {
       "link-color": PROSE_COLORS2["link-color"],
       "link-color-hover": PROSE_COLORS2["link-color-hover"],
-      "ambiguous-color": "var(--%p%-link-color)"
+      "ambiguous-color": PROSE_COLORS2["ambiguous-color"]
     };
+    function hueShifted(value) {
+      const deg = parseFloat(value);
+      return Number.isFinite(deg) && deg % 360 !== 0;
+    }
     var SIGIL_PICKS = { "link-color": SIGIL_COLORS["link-color"] };
+    var PROSE_SHIFTS2 = ["hue-shift", "ambiguous-hue-shift"];
+    var SIGIL_SHIFTS = ["hue-shift"];
     function asSrgb(value, readPixel) {
       if (!value || /^(#|rgb|hsl)/.test(value))
         return value;
@@ -5159,16 +5192,19 @@ var require_theme_colors = __commonJS({
         return Boolean(inUse) && Boolean(declared) && inUse !== declared;
       });
     }
-    function trackThemeColors2(plugin, prefix, colors, picks) {
+    function trackThemeColors2(plugin, prefix, colors, picks, shifts = SIGIL_SHIFTS) {
       if (typeof document === "undefined" || !document.head || !document.body)
         return;
       const sheet = document.head.createEl("style");
       plugin.register(() => sheet.remove());
       const names = picks ? Object.keys(picks) : [];
       const classOf = (name) => `${prefix}-${name}-picked`;
+      const shiftedOf = (name) => `${prefix}-${name}ed`;
       plugin.register(() => {
         for (const name of names)
           document.body.classList.remove(classOf(name));
+        for (const name of shifts)
+          document.body.classList.remove(shiftedOf(name));
       });
       const paint = () => {
         const probe = document.body.createEl("span", { cls: `${prefix}-probe` });
@@ -5192,6 +5228,11 @@ var require_theme_colors = __commonJS({
         const set = new Set(names.length ? pickedIn(prefix, picks, resolve) : []);
         for (const name of names)
           document.body.classList.toggle(classOf(name), set.has(name));
+        const page = getComputedStyle(document.body);
+        for (const name of shifts) {
+          const deg = page.getPropertyValue(`--${prefix}-${name}`);
+          document.body.classList.toggle(shiftedOf(name), hueShifted(deg));
+        }
         probe.remove();
       };
       plugin.app.workspace.onLayoutReady(paint);
@@ -5203,10 +5244,13 @@ var require_theme_colors = __commonJS({
       capAlpha,
       asSrgb,
       pickedIn,
+      hueShifted,
       PROSE_COLORS: PROSE_COLORS2,
       SIGIL_COLORS,
       PROSE_PICKS: PROSE_PICKS2,
-      SIGIL_PICKS
+      SIGIL_PICKS,
+      PROSE_SHIFTS: PROSE_SHIFTS2,
+      SIGIL_SHIFTS
     };
   }
 });
@@ -6682,7 +6726,12 @@ var indexEvents = require_index_events();
 var { HeadingSuggest, suggestAvailable } = require_heading_suggest();
 var { initI18n, withFamily, t, plural } = require_i18n();
 var { announceStyleSettings } = require_style_settings();
-var { trackThemeColors, PROSE_COLORS, PROSE_PICKS } = require_theme_colors();
+var {
+  trackThemeColors,
+  PROSE_COLORS,
+  PROSE_PICKS,
+  PROSE_SHIFTS
+} = require_theme_colors();
 var { buildMenu } = require_menu_verbs();
 var { registerActions, menuActions } = require_actions();
 var { PATH_ACTIONS } = require_path_actions();
@@ -6851,7 +6900,7 @@ var HeadingLinkerPlugin = class extends Plugin {
       this.registerEditorSuggest(new HeadingSuggest(this.app, this));
     this.addSettingTab(new HeadingLinkerSettingTab(this.app, this));
     announceStyleSettings(this);
-    trackThemeColors(this, "heading", PROSE_COLORS, PROSE_PICKS);
+    trackThemeColors(this, "heading", PROSE_COLORS, PROSE_PICKS, PROSE_SHIFTS);
     this.api = this.buildApi();
   }
   async saveSettings() {
