@@ -5,8 +5,8 @@
 # Heading Linker
 
 <p align="center">
-  <a href="https://community.obsidian.md/plugins/heading-linker"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmax-fluff%2Fobsidian-linker-shared%2Fbadges%2Fheading-linker.json" alt="Obsidian downloads"></a>
-  <a href="https://github.com/max-fluff/obsidian-heading-linker/releases/latest"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmax-fluff%2Fobsidian-heading-linker%2Fmain%2Fmanifest.json&query=%24.version&prefix=v&label=release&color=7c3aed" alt="Latest release"></a>
+  <a href="https://community.obsidian.md/plugins/heading-linker"><img src="https://github.com/max-fluff/obsidian-linker-shared/raw/badges/heading-linker-downloads.svg" alt="Obsidian downloads"></a>
+  <a href="https://github.com/max-fluff/obsidian-heading-linker/releases/latest"><img src="https://github.com/max-fluff/obsidian-linker-shared/raw/badges/heading-linker-release.svg" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/max-fluff/obsidian-heading-linker?color=7c3aed" alt="License: MIT"></a>
 </p>
 
