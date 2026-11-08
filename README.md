@@ -10,17 +10,22 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/max-fluff/obsidian-heading-linker?color=7c3aed" alt="License: MIT"></a>
 </p>
 
-Finds words in your notes and turns them into links to matching **headings** inside files you nominate as glossaries — in any word form (declensions, plurals), not just exact spellings. Keep a `Guide.md` with a `## Projectile` heading, and every "projectile", "projectiles" or other form elsewhere gets highlighted and can become `[[Guide#Projectile|projectiles]]`: a real link that opens the file at that heading, with the note's own wording kept as the visible text.
+Finds words in your notes and turns them into links to matching **headings** inside files you nominate as glossaries — in any word form, not just exact spellings. Keep a `Guide.md` with a `## Projectile` heading, and "projectiles" anywhere else gets highlighted and can become `[[Guide#Projectile|projectiles]]`: a real link that opens the file at that heading, with your own wording kept as the visible text.
+
+<p align="center">
+  <img src="docs/images/demo.gif" alt="Typing a note next to a design doc: words matching its headings are highlighted, an ambiguous word offers two headings, and picking one opens that section" width="760">
+</p>
+
+- **Headings as terms.** A design doc, rulebook or spec stays one file; every heading in it is a term.
+- **Any word form.** `spawns` and `spawning` find a `Spawn` heading, `рои` finds `Рой`; eight languages are built in.
+- **Overlay first, links on demand.** Turn matches into real links for a note, a selection or the whole vault, after a preview — and [unlink](#unlink) them the same way.
+- **Aliases live under the heading:** `%% alias: bolt, shot %%`, invisible in Reading view.
+- **The same heading in two files?** Hover lists both with where each one sits, and you choose.
+- **Desktop and mobile.**
 
 > **Links headings as terms — it won't treat a whole note as one.** If you want words to link to whole **notes**, that's what this plugin leaves out, and its sibling [Glossary Linker](https://community.obsidian.md/plugins/glossary-linker) does exactly that, on the same matching engine. The two are made to work together.
 
-Available in the Obsidian community catalog: **[community.obsidian.md/plugins/heading-linker](https://community.obsidian.md/plugins/heading-linker)**.
-
-<p align="center">
-  <img src="docs/images/hero.png" alt="A note where words matching headings are highlighted in several word forms and in two languages" width="700">
-</p>
-
-The plugin ships as `main.js`, `manifest.json` and `styles.css`. Eight language modules are baked into `main.js`, so morphology works the moment you install it. `main.js` is built from `src/` with esbuild (see [Development](#development)).
+**Install:** *Settings → Community plugins → Browse* → **Heading Linker**, or open [its catalog page](https://community.obsidian.md/plugins/heading-linker). Other ways are under [Installation](#installation).
 
 ## Contents
 
@@ -45,6 +50,10 @@ The plugin ships as `main.js`, `manifest.json` and `styles.css`. Eight language 
 - [Related plugins](#related-plugins)
 
 ## What it does
+
+<p align="center">
+  <img src="docs/images/hero.png" alt="A note where words matching headings are highlighted in several word forms and in two languages" width="700">
+</p>
 
 ### Highlight headings in any word form
 
