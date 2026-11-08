@@ -34,7 +34,7 @@ module.exports = {
       getUsageReport: (opts) => this.getUsageReport(opts),
 
       // Frequent in-scope words that are not yet a heading, worth defining (async):
-      // { lemma, display, count, docFreq }, ordered by how many notes they appear in.
+      // { lemma, display, forms, count, docFreq }, ordered by how many notes they appear in.
       collectCandidates: (opts) => this.collectCandidates(opts),
 
       // Subscribe to index rebuilds; returns an unsubscribe function.

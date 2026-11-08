@@ -124,7 +124,7 @@ Both lists are editable from the settings tab, the file explorer's right-click m
 
 Matching reduces each word to a stem so different forms of the same word collapse together. Eight languages are built in — English, Russian, Ukrainian, German, Spanish, French, Latin and Greek — and you choose which are active and in what priority order. On first run the plugin enables English plus your Obsidian interface language, if a module exists for it.
 
-The stemmer handles the regular forms; the irregular plurals sit in three tables — classical (`cacti → cactus`, `indices → index`), native (`mice → mouse`, `children → child`) and `-f/-ves` (`wolves → wolf`, `lives → life`). The tables apply to a compound's last word too, so `grandchildren → grandchild` and `salespeople → salesperson`. Greek `-sis` nouns are too many to list, so they follow a rule instead: `prognoses → prognosis`, `neurogeneses → neurogenesis`. An invariant plural like `moose` needs nothing.
+The stemmer handles the regular forms; the irregular plurals sit in three tables — classical (`cacti → cactus`, `indices → index`), native (`mice → mouse`, `children → child`) and `-f/-ves` (`wolves → wolf`, `lives → life`). The tables apply to a compound's last word too, so `grandchildren → grandchild` and `salespeople → salesperson`. Greek `-sis` nouns are too many to list, so they follow a rule instead: `prognoses → prognosis`, `neurogeneses → neurogenesis`. Greek `-on` nouns stay in the table (`mitochondria → mitochondrion`, `criteria → criterion`, `polyhedra → polyhedron`): as a rule, `-a → -on` would turn `cola` into a plural of `colon`. An invariant plural like `moose` needs nothing.
 
 The other languages get the same treatment where a stemmer cannot help. Russian has a rule for the fleeting vowel (`песок/песка`, `отец/отца`) and a table for the plurals that grow or replace the stem (`имя/имена`, `мать/матери`, `человек/люди`); Ukrainian has the same table (`людина/люди`, `ім'я/імена`); French carries the closed `-ail/-aux` group and `œil/yeux`. German needs none of it — its umlaut plurals (`Maus/Mäuse`, `Buch/Bücher`) already fall out of the stemmer. Latin and Greek stay off by default and are aimed at scholarly notes quoting classical terms; the latinised plurals an English note actually uses are already in English.
 
@@ -235,7 +235,7 @@ The plugin exposes a small read-only API at `app.plugins.plugins['heading-linker
 | `keysFor(word)` / `lemmaFor(word)` | the morphology keys / base form of a word, the same engine the matcher uses |
 | `findMatches(text)` | heading matches in arbitrary text (protected spans skipped) |
 | `getUsageReport(opts?)` | async; per heading, how many times it is used across in-scope notes and in which files — headings with `count: 0` are unused. Counts plain-text mentions; pass `{ includeLinks: true }` to also count existing `[[File#Heading]]` links, `{ wholeVault: true }` to scan every note |
-| `collectCandidates()` | async; frequent in-scope words that are not yet a heading: `{ lemma, display, count, docFreq }`, ordered by how many notes they appear in |
+| `collectCandidates()` | async; frequent in-scope words that are not yet a heading: `{ lemma, display, forms, count, docFreq }` (`forms`: every spelling folded into the candidate), ordered by how many notes they appear in |
 | `onChange(cb)` | subscribe to index rebuilds; returns an unsubscribe function |
 
 An "unused headings" list in DataviewJS, for example:

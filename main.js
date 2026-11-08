@@ -764,6 +764,13 @@ var require_en = __commonJS({
       ["criterion", "criteria"],
       ["ganglion", "ganglia"],
       ["automaton", "automata"],
+      ["mitochondrion", "mitochondria"],
+      ["taxon", "taxa"],
+      ["noumenon", "noumena"],
+      ["prolegomenon", "prolegomena"],
+      ["aphelion", "aphelia"],
+      ["perihelion", "perihelia"],
+      ["hedron", "hedra"],
       ["index", "indices", "indexes"],
       ["matrix", "matrices"],
       ["appendix", "appendices", "appendixes"],
@@ -4691,39 +4698,73 @@ var require_usage = __commonJS({
           continue;
         if (plugin.overlapsProtected(protect, m.index, m.index + raw.length))
           continue;
-        if (isTermWord(plugin.keysFor(raw), raw))
+        const keys = plugin.keysFor(raw);
+        if (isTermWord(keys, raw))
           continue;
         const lemma = plugin.lemmaFor(raw);
         if (lemma.length < minLen)
           continue;
         let g = here.get(lemma);
         if (!g) {
-          g = { forms: /* @__PURE__ */ new Map(), total: 0 };
+          g = { forms: /* @__PURE__ */ new Map(), total: 0, keys: /* @__PURE__ */ new Set() };
           here.set(lemma, g);
         }
         g.forms.set(raw, (g.forms.get(raw) || 0) + 1);
         g.total++;
+        for (const k of keys)
+          g.keys.add(k);
       }
       return here;
     }
     function aggregateCandidates(results, minNotes) {
       const groups = /* @__PURE__ */ new Map();
-      for (const { value: here } of results) {
+      const parent = /* @__PURE__ */ new Map();
+      const root = (l) => {
+        while (parent.get(l) !== l) {
+          parent.set(l, parent.get(parent.get(l)));
+          l = parent.get(l);
+        }
+        return l;
+      };
+      const ownerOfKey = /* @__PURE__ */ new Map();
+      results.forEach(({ value: here }, note) => {
         for (const [lemma, g] of here) {
           let all = groups.get(lemma);
           if (!all) {
-            all = { forms: /* @__PURE__ */ new Map(), total: 0, docFreq: 0 };
+            all = { forms: /* @__PURE__ */ new Map(), total: 0, notes: /* @__PURE__ */ new Set() };
             groups.set(lemma, all);
+            parent.set(lemma, lemma);
           }
           for (const [form, n] of g.forms)
             all.forms.set(form, (all.forms.get(form) || 0) + n);
           all.total += g.total;
-          all.docFreq++;
+          all.notes.add(note);
+          for (const k of g.keys) {
+            const other = ownerOfKey.get(k);
+            if (other === void 0)
+              ownerOfKey.set(k, lemma);
+            else
+              parent.set(root(lemma), root(other));
+          }
         }
+      });
+      const merged = /* @__PURE__ */ new Map();
+      for (const [lemma, g] of groups) {
+        const r = root(lemma);
+        let m = merged.get(r);
+        if (!m) {
+          m = { forms: /* @__PURE__ */ new Map(), total: 0, notes: /* @__PURE__ */ new Set() };
+          merged.set(r, m);
+        }
+        for (const [form, n] of g.forms)
+          m.forms.set(form, (m.forms.get(form) || 0) + n);
+        m.total += g.total;
+        for (const n of g.notes)
+          m.notes.add(n);
       }
       const out = [];
-      for (const [lemma, g] of groups) {
-        if (g.docFreq < minNotes)
+      for (const [lemma, g] of merged) {
+        if (g.notes.size < minNotes)
           continue;
         let display = lemma, best = -1;
         for (const [form, n] of g.forms)
@@ -4731,7 +4772,7 @@ var require_usage = __commonJS({
             best = n;
             display = form;
           }
-        out.push({ lemma, display, count: g.total, docFreq: g.docFreq });
+        out.push({ lemma, display, forms: [...g.forms.keys()], count: g.total, docFreq: g.notes.size });
       }
       out.sort((a, b) => b.docFreq - a.docFreq || b.count - a.count);
       return out.slice(0, 100);
@@ -4957,7 +4998,7 @@ var require_api = __commonJS({
           // true } scans every note regardless of scope. Headings with count 0 are unused.
           getUsageReport: (opts) => this.getUsageReport(opts),
           // Frequent in-scope words that are not yet a heading, worth defining (async):
-          // { lemma, display, count, docFreq }, ordered by how many notes they appear in.
+          // { lemma, display, forms, count, docFreq }, ordered by how many notes they appear in.
           collectCandidates: (opts) => this.collectCandidates(opts),
           // Subscribe to index rebuilds; returns an unsubscribe function.
           onChange: (cb) => this.onIndexChange(cb),
