@@ -8,10 +8,10 @@ const { t, plural } = require('./shared/i18n');
 
 // Turning words into heading links and reverting them. Mixed into the plugin prototype.
 module.exports = {
-  collectMatches(text, currentFile) {
+  collectMatches(text, currentFile, sourcePath) {
     const matches = this.findMatches(text, currentFile, { protect: true });
     if (!this.settings.linkFirstOnly) return matches;
-    const seen = new Set();
+    const seen = new Set(this.findHeadingLinks(text, sourcePath).map((l) => l.linktext));
     const out = [];
     for (const m of matches) {
       if (seen.has(m.linktext)) continue;
@@ -49,7 +49,7 @@ module.exports = {
     const file = this.app.workspace.getActiveFile();
     if (!file) { new Notice(t('notice.noActiveNote')); return; }
     const text = await this.app.vault.cachedRead(file);
-    const matches = this.collectMatches(text, this.currentFileBase(file.path));
+    const matches = this.collectMatches(text, this.currentFileBase(file.path), file.path);
     if (!matches.length) { new Notice(t('notice.noMatches')); return; }
     this.openMaterializePreview([{ file, original: text, matches }], async (results) => {
       const r = results[0];
@@ -69,7 +69,7 @@ module.exports = {
     const sel = editor.getSelection();
     if (!sel) { new Notice(t('notice.noSelection')); return; }
     const file = this.app.workspace.getActiveFile();
-    const matches = this.collectMatches(sel, file ? this.currentFileBase(file.path) : null);
+    const matches = this.collectMatches(sel, file ? this.currentFileBase(file.path) : null, file ? file.path : '');
     if (!matches.length) { new Notice(t('notice.noMatches')); return; }
     this.openMaterializePreview([{ file: null, original: sel, matches, label: t('label.selection') }], (results) => {
       editor.replaceSelection(results[0].newText);
@@ -97,7 +97,7 @@ module.exports = {
 
   async materializeScope() {
     const files = await this.scanScopeMatches((text, file) =>
-      this.collectMatches(text, this.currentFileBase(file.path)));
+      this.collectMatches(text, this.currentFileBase(file.path), file.path));
     if (!files.length) { new Notice(t('notice.noMatches')); return; }
     this.openMaterializePreview(files, (results) => this.writeScopeResults(results));
   },
@@ -105,6 +105,7 @@ module.exports = {
   // Heading links in `text` that unlink can revert: each resolves to a glossary file and
   // carries a #heading subpath (the links this plugin creates). Offsets are into `text`.
   findHeadingLinks(text, sourcePath) {
+    const indexed = new Set((this.terms || []).map((x) => x.linktext));
     const ranges = this.codeFrontmatterRanges(text);
     const re = /\[\[([^\]\n]+)\]\]/g;
     const out = [];
@@ -117,9 +118,19 @@ module.exports = {
       if (!parsed) continue; // heading links carry a #subpath
       const dest = this.app.metadataCache.getFirstLinkpathDest(parsed.target, sourcePath || '');
       if (!dest || !this.isGlossaryFile(dest)) continue;
-      out.push({ start, end, linktext: `${dest.basename}#${parsed.subpath}`, display: parsed.display, source: m[0] });
+      const linktext = `${dest.basename}#${parsed.subpath}`;
+      if (!indexed.has(linktext)) continue;
+      
+      out.push({ start, end, linktext, display: parsed.display, source: m[0] });
     }
     return out;
+  },
+
+  firstUnlinked(matches, text, sourcePath, linkedAs) {
+    if (!matches.length) return [];
+    const target = linkedAs || matches[0].linktext;
+    if (this.findHeadingLinks(text, sourcePath).some((l) => l.linktext === target)) return [];
+    return matches.slice(0, 1);
   },
 
   openUnlinkPreview(files, onApply) {
@@ -286,8 +297,8 @@ module.exports = {
     await this.app.vault.process(file, (text) => {
       let matches = this.findMatches(text, this.currentFileBase(file.path), { protect: true })
         .filter((m) => m.linktext === linktext);
+      if (this.settings.linkFirstOnly) matches = this.firstUnlinked(matches, text, file.path, linkAs);
       if (!matches.length) return text;
-      if (this.settings.linkFirstOnly) matches = matches.slice(0, 1);
       if (linkAs && linkAs !== linktext) matches = matches.map((m) => ({ ...m, linktext: linkAs }));
       count = matches.length;
       return this.applyLinks(text, matches).newText;
@@ -302,7 +313,7 @@ module.exports = {
     const files = await this.scanScopeMatches((text, file) => {
       let matches = this.findMatches(text, this.currentFileBase(file.path), { protect: true })
         .filter((m) => m.linktext === linktext);
-      if (this.settings.linkFirstOnly) matches = matches.slice(0, 1);
+      if (this.settings.linkFirstOnly) matches = this.firstUnlinked(matches, text, file.path, term);
       // Heading already chosen → no per-occurrence picker in the preview.
       return matches.map((m) => ({ ...m, linktext: term, alts: null }));
     });

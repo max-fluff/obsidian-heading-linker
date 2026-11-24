@@ -4231,11 +4231,11 @@ var require_materialize = __commonJS({
     var { candidatesFor } = require_discover();
     var { t: t2, plural: plural2 } = require_i18n();
     module2.exports = {
-      collectMatches(text, currentFile) {
+      collectMatches(text, currentFile, sourcePath) {
         const matches = this.findMatches(text, currentFile, { protect: true });
         if (!this.settings.linkFirstOnly)
           return matches;
-        const seen = /* @__PURE__ */ new Set();
+        const seen = new Set(this.findHeadingLinks(text, sourcePath).map((l) => l.linktext));
         const out = [];
         for (const m of matches) {
           if (seen.has(m.linktext))
@@ -4278,7 +4278,7 @@ var require_materialize = __commonJS({
           return;
         }
         const text = await this.app.vault.cachedRead(file);
-        const matches = this.collectMatches(text, this.currentFileBase(file.path));
+        const matches = this.collectMatches(text, this.currentFileBase(file.path), file.path);
         if (!matches.length) {
           new Notice2(t2("notice.noMatches"));
           return;
@@ -4307,7 +4307,7 @@ var require_materialize = __commonJS({
           return;
         }
         const file = this.app.workspace.getActiveFile();
-        const matches = this.collectMatches(sel, file ? this.currentFileBase(file.path) : null);
+        const matches = this.collectMatches(sel, file ? this.currentFileBase(file.path) : null, file ? file.path : "");
         if (!matches.length) {
           new Notice2(t2("notice.noMatches"));
           return;
@@ -4337,7 +4337,7 @@ var require_materialize = __commonJS({
         return out;
       },
       async materializeScope() {
-        const files = await this.scanScopeMatches((text, file) => this.collectMatches(text, this.currentFileBase(file.path)));
+        const files = await this.scanScopeMatches((text, file) => this.collectMatches(text, this.currentFileBase(file.path), file.path));
         if (!files.length) {
           new Notice2(t2("notice.noMatches"));
           return;
@@ -4347,6 +4347,7 @@ var require_materialize = __commonJS({
       // Heading links in `text` that unlink can revert: each resolves to a glossary file and
       // carries a #heading subpath (the links this plugin creates). Offsets are into `text`.
       findHeadingLinks(text, sourcePath) {
+        const indexed = new Set((this.terms || []).map((x) => x.linktext));
         const ranges = this.codeFrontmatterRanges(text);
         const re = /\[\[([^\]\n]+)\]\]/g;
         const out = [];
@@ -4362,9 +4363,20 @@ var require_materialize = __commonJS({
           const dest = this.app.metadataCache.getFirstLinkpathDest(parsed.target, sourcePath || "");
           if (!dest || !this.isGlossaryFile(dest))
             continue;
-          out.push({ start, end, linktext: `${dest.basename}#${parsed.subpath}`, display: parsed.display, source: m[0] });
+          const linktext = `${dest.basename}#${parsed.subpath}`;
+          if (!indexed.has(linktext))
+            continue;
+          out.push({ start, end, linktext, display: parsed.display, source: m[0] });
         }
         return out;
+      },
+      firstUnlinked(matches, text, sourcePath, linkedAs) {
+        if (!matches.length)
+          return [];
+        const target = linkedAs || matches[0].linktext;
+        if (this.findHeadingLinks(text, sourcePath).some((l) => l.linktext === target))
+          return [];
+        return matches.slice(0, 1);
       },
       openUnlinkPreview(files, onApply) {
         new UnlinkPreviewModal(this.app, files, this, onApply).open();
@@ -4537,10 +4549,10 @@ var require_materialize = __commonJS({
         let count = 0;
         await this.app.vault.process(file, (text) => {
           let matches = this.findMatches(text, this.currentFileBase(file.path), { protect: true }).filter((m) => m.linktext === linktext);
+          if (this.settings.linkFirstOnly)
+            matches = this.firstUnlinked(matches, text, file.path, linkAs);
           if (!matches.length)
             return text;
-          if (this.settings.linkFirstOnly)
-            matches = matches.slice(0, 1);
           if (linkAs && linkAs !== linktext)
             matches = matches.map((m) => ({ ...m, linktext: linkAs }));
           count = matches.length;
@@ -4558,7 +4570,7 @@ var require_materialize = __commonJS({
         const files = await this.scanScopeMatches((text, file) => {
           let matches = this.findMatches(text, this.currentFileBase(file.path), { protect: true }).filter((m) => m.linktext === linktext);
           if (this.settings.linkFirstOnly)
-            matches = matches.slice(0, 1);
+            matches = this.firstUnlinked(matches, text, file.path, term);
           return matches.map((m) => ({ ...m, linktext: term, alts: null }));
         });
         if (!files.length) {
